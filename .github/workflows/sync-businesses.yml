@@ -1,0 +1,27 @@
+name: Daily business directory import
+
+on:
+  schedule:
+    - cron: '30 2 * * *'   # daily 02:30 UTC — rotates through 28 cities (all refreshed weekly)
+  workflow_dispatch: {}
+
+concurrency:
+  group: business-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run sync:businesses
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BUSINESS_CITIES_PER_RUN: ${{ vars.BUSINESS_CITIES_PER_RUN || '4' }}

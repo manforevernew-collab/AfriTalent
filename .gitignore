@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.vercel/
+*.log
+.DS_Store
+# local tooling
+.imgtools/
+.vscode/
+__pycache__/
+*.pyc
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example

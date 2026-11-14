@@ -1,37 +1,37 @@
 {
   "name": "afritalent",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "dev": "vite --host localhost --port 4173",
+    "dev:lan": "vite --host 0.0.0.0 --port 4173",
+    "build": "vite build",
+    "preview": "vite preview --host localhost --port 4174",
+    "sync:jobs": "node scripts/sync-jobs.mjs",
+    "sync:jobs:dry": "node scripts/sync-jobs.mjs --dry-run",
+    "sync:businesses": "node scripts/sync-businesses.mjs",
+    "sync:businesses:dry": "node scripts/sync-businesses.mjs --dry-run",
+    "test": "node --test server/normalize.test.js server/sources.test.js server/kyc/runCheck.test.js server/business/osm.test.js shared/idRules.test.js src/lib/inboxData.test.js",
+    "test:sql": "node tests/escrow.sql.test.mjs",
+    "deploy:ftp": "node scripts/deploy-ftp.mjs"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0",
-    "react-helmet-async": "^2.0.0",
-    "lucide-react": "^0.294.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.5",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
-    "@types/react": "^18.2.43",
-    "@types/react-dom": "^18.2.17",
-    "@typescript-eslint/eslint-plugin": "^6.14.0",
-    "@typescript-eslint/parser": "^6.14.0",
-    "@vitejs/plugin-react": "^4.2.1",
-    "autoprefixer": "^10.4.16",
-    "eslint": "^8.55.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.5",
-    "postcss": "^8.4.32",
-    "tailwindcss": "^3.3.6",
-    "typescript": "^5.2.2",
-    "vite": "^5.0.8"
+    "@electric-sql/pglite": "^0.3.16",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "basic-ftp": "^6.2.6",
+    "vite": "^8.3.6"
   },
-  "allowScripts": {
-    "esbuild@0.21.5": true
+  "engines": {
+    "node": ">=20"
   }
 }
