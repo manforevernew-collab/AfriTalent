@@ -20,3 +20,15 @@ export const supabase = hasSupabaseConfig
   : null
 
 export const isSupabaseConfigured = hasSupabaseConfig
+
+// Which social sign-in providers are switched on in Supabase (public endpoint).
+// Resolves to e.g. { google: true, linkedin_oidc: false }, or null if it can't be checked.
+let providersPromise
+export function getEnabledProviders() {
+  if (!hasSupabaseConfig) return Promise.resolve(null)
+  providersPromise ??= fetch(`${supabaseUrl}/auth/v1/settings`, { headers: { apikey: supabaseAnonKey } })
+    .then(r => (r.ok ? r.json() : null))
+    .then(s => s?.external ?? null)
+    .catch(() => null)
+  return providersPromise
+}

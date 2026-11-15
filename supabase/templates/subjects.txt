@@ -1,0 +1,6 @@
+confirmation: Confirm your AfriTalent account
+recovery: Reset your AfriTalent password
+magic_link: Your AfriTalent sign-in link
+invite: You've been invited to join AfriTalent
+email_change: Confirm your new AfriTalent email
+reauthentication: Your AfriTalent verification code

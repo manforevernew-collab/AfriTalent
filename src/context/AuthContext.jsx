@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, getEnabledProviders } from '../lib/supabase'
 
 const AuthContext = createContext()
 
@@ -73,13 +73,19 @@ export function AuthProvider({ children }) {
     if (!supabase) return { data: null, error: new Error('Supabase is not configured.') }
     const { data, error } = await supabase.auth.signUp({
       email, password,
-      options: { data: metadata }
+      options: { data: metadata, emailRedirectTo: window.location.origin }
     })
     return { data, error }
   }
 
   const signInWithOAuth = async (provider) => {
     if (!supabase) return { data: null, error: new Error('Supabase is not configured.') }
+    // Never send people to Supabase's raw "provider is not enabled" error page
+    const enabled = await getEnabledProviders()
+    if (enabled && !enabled[provider]) {
+      const name = { google: 'Google', linkedin_oidc: 'LinkedIn' }[provider] || provider
+      return { data: null, error: new Error(`${name} sign-in isn't available yet. Please use your email and password.`) }
+    }
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: { redirectTo: window.location.origin }
