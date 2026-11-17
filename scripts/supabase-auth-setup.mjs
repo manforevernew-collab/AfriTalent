@@ -126,7 +126,10 @@ const api = async (method, body) => {
 }
 
 const current = await api('GET')
-const allow = new Set(String(current.uri_allow_list || '').split(',').map(s => s.trim()).filter(Boolean))
+// Drop template placeholders (e.g. "africonnect-v2-yourname.vercel.app") — anyone could register
+// that hostname and receive users' sign-in redirects.
+const allow = new Set(String(current.uri_allow_list || '').split(',').map(s => s.trim())
+  .filter(u => u && !/yourname|your-project|example\.com/i.test(u)))
 for (const u of [SITE, `${SITE}/**`, 'http://localhost:5173/**', 'http://localhost:4173/**']) allow.add(u)
 
 const patch = { site_url: SITE, uri_allow_list: [...allow].join(','), external_email_enabled: true, mailer_autoconfirm: false }
@@ -138,6 +141,9 @@ if (env.GOOGLE_CLIENT_ID || env.GOOGLE_CLIENT_SECRET) {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) { console.error('Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET'); process.exit(1) }
   if (!/\.apps\.googleusercontent\.com$/.test(env.GOOGLE_CLIENT_ID)) { console.error('GOOGLE_CLIENT_ID should end in .apps.googleusercontent.com'); process.exit(1) }
   Object.assign(patch, { external_google_enabled: true, external_google_client_id: env.GOOGLE_CLIENT_ID, external_google_secret: env.GOOGLE_CLIENT_SECRET })
+} else if (current.external_google_client_id && current.external_google_secret && !current.external_google_enabled) {
+  // Credentials were entered in the dashboard but the provider was left switched off
+  patch.external_google_enabled = true
 }
 const smtpKeys = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'SMTP_ADMIN_EMAIL']
 if (smtpKeys.some(k => env[k])) {
@@ -147,6 +153,13 @@ if (smtpKeys.some(k => env[k])) {
     smtp_host: env.SMTP_HOST, smtp_port: String(env.SMTP_PORT || 465), smtp_user: env.SMTP_USER, smtp_pass: env.SMTP_PASS,
     smtp_admin_email: env.SMTP_ADMIN_EMAIL, smtp_sender_name: env.SMTP_SENDER_NAME || BRAND,
   })
+}
+
+// Free-tier projects can only customise email templates once a custom SMTP sender is set
+let templatesSkipped = false
+if (!patch.smtp_host && !current.smtp_host) {
+  for (const k of Object.keys(patch)) if (k.startsWith('mailer_templates_') || k.startsWith('mailer_subjects_')) delete patch[k]
+  templatesSkipped = true
 }
 
 const SECRET = /secret|pass|content/
@@ -159,4 +172,5 @@ console.log('\n✅ Supabase Auth updated')
 console.log(`   Site URL:        ${after.site_url}`)
 console.log(`   Google sign-in:  ${after.external_google_enabled ? 'ON' : 'off (add GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET)'}`)
 console.log(`   Custom SMTP:     ${after.smtp_host ? `${after.smtp_host} as "${after.smtp_sender_name}" <${after.smtp_admin_email}>` : 'not set — Supabase only emails your team members until you add it'}`)
+console.log(`   Email templates: ${templatesSkipped ? 'skipped — add SMTP_* to .env (Supabase requires a custom sender to brand emails), then re-run' : 'AfriTalent branded'}`)
 if (after.external_google_enabled) console.log(`\n   Google Cloud → OAuth client → Authorized redirect URI must include:\n   https://${ref}.supabase.co/auth/v1/callback`)
