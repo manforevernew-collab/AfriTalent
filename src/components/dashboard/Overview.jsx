@@ -1,81 +1,154 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { formatMoney, TX_LABEL } from '../../lib/marketplace'
-import { dashboardSummary, myOrders, ORDER_STATUS } from '../../lib/social'
+import { formatMoney } from '../../lib/marketplace'
+import { dashboardSummary, myOrders, ORDER_STATUS, INTERVIEW_MODES, respondInterview, cancelInterview } from '../../lib/social'
 import { timeAgo } from '../../context/InboxContext'
 import { SetupPending } from '../social/SocialUI'
+import UserAvatar from '../UserAvatar'
 
-function Stat({ icon, label, value, sub, to }) {
+function Stat({ icon, label, value, sub, to, tone }) {
   const body = (
     <>
-      <span className="ov-icon"><i className={icon}></i></span>
+      <span className={`ov-icon ${tone || ''}`}><i className={icon}></i></span>
       <div><span className="ov-label">{label}</span><strong className="ov-value">{value}</strong>{sub && <span className="ov-sub">{sub}</span>}</div>
     </>
   )
   return to ? <Link to={to} className="ov-stat card">{body}</Link> : <div className="ov-stat card">{body}</div>
 }
 
-export function OverviewTab() {
-  const { profile, isBusiness } = useAuth()
-  const [s, setS] = useState(null)
-  const [error, setError] = useState(null)
-  useEffect(() => { dashboardSummary().then(setS).catch(setError) }, [])
+// Used until the dashboard_summary database function is live: counts from existing tables.
+async function basicSummary(uid) {
+  const count = q => q.then(r => r.count || 0, () => 0)
+  const [apps, props, done, earnings] = await Promise.all([
+    count(supabase.from('applications').select('id', { count: 'exact', head: true }).eq('user_id', uid)),
+    count(supabase.from('gig_proposals').select('id', { count: 'exact', head: true }).eq('freelancer_id', uid)),
+    count(supabase.from('contracts').select('id', { count: 'exact', head: true }).eq('freelancer_id', uid).eq('status', 'completed')),
+    supabase.from('wallet_transactions').select('id, amount, description, created_at').eq('user_id', uid).eq('type', 'earning').order('created_at', { ascending: false }).limit(200).then(r => r.data || [], () => []),
+  ])
+  const since = Date.now() - 30 * 864e5
+  return {
+    basic: true,
+    profile_views_30d: null, profile_views_total: null, interviews_upcoming: null, interviews: [],
+    job_applications: apps, proposals_sent: props, proposals_accepted: null, jobs_done: done, jobs_in_progress: null,
+    earned_total: earnings.reduce((a, t) => a + Number(t.amount), 0),
+    earned_30d: earnings.filter(t => new Date(t.created_at) > since).reduce((a, t) => a + Number(t.amount), 0),
+    pending_earnings: null, currency: 'NGN', rating: null, ratings_count: 0,
+    recent_applications: [], recent_earnings: earnings.slice(0, 6), recent_jobs_done: [],
+  }
+}
 
-  if (error) return (
-    <div className="dash-stack">
-      <SetupPending error={error} />
-      <div className="ov-grid">
-        <Stat icon="fas fa-wallet" label="Wallet" value="Open wallet" to="/dashboard?tab=wallet" />
-        <Stat icon="fas fa-briefcase" label="Jobs & gigs" value="Browse" to="/jobs" />
-        <Stat icon="fas fa-store" label="Market" value="Browse" to="/market" />
+function trend(now, prev) {
+  if (prev == null || now == null) return null
+  if (!prev) return now ? 'New this month' : null
+  const pct = Math.round(((now - prev) / prev) * 100)
+  return `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs previous 30 days`
+}
+
+function InterviewRow({ iv, onChange }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const when = new Date(iv.scheduled_at)
+  const soon = when - Date.now() < 864e5
+  async function run(fn) { setBusy(true); setErr(''); try { await fn(); onChange() } catch (e) { setErr(e.message) } finally { setBusy(false) } }
+  return (
+    <div className="iv-row">
+      <div className={`iv-date ${soon ? 'soon' : ''}`}>
+        <span>{when.toLocaleDateString(undefined, { month: 'short' })}</span>
+        <b>{when.getDate()}</b>
+        <span>{when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <strong>{iv.title}</strong>
+        <div className="muted" style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <UserAvatar src={iv.other_avatar} name={iv.other_name} size={20} />
+          {iv.as_candidate ? 'with' : 'with candidate'} <Link to={`/u/${iv.other_username}`}>{iv.other_name}</Link>
+          · {INTERVIEW_MODES[iv.mode]} · {iv.duration_minutes} min
+        </div>
+        {iv.location && (/^https?:\/\//.test(iv.location)
+          ? <a href={iv.location} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}><i className="fas fa-video"></i> Join link</a>
+          : <span style={{ fontSize: 13 }}><i className="fas fa-map-marker-alt"></i> {iv.location}</span>)}
+        {iv.notes && <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>{iv.notes}</p>}
+        {err && <div className="notice notice-error" style={{ marginTop: 6 }}>{err}</div>}
+      </div>
+      <div className="iv-actions">
+        <span className={`status-pill ${iv.status === 'accepted' ? 'ok' : ''}`}>{iv.status === 'accepted' ? 'Confirmed' : iv.as_candidate ? 'Awaiting your reply' : 'Awaiting candidate'}</span>
+        {iv.as_candidate && iv.status === 'scheduled' && (
+          <>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(() => respondInterview(iv.id, true))}>Accept</button>
+            <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => run(() => respondInterview(iv.id, false, window.prompt('Optional: tell them why or suggest another time') || null))}>Decline</button>
+          </>
+        )}
+        {!iv.as_candidate && <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => window.confirm('Cancel this interview?') && run(() => cancelInterview(iv.id))}>Cancel</button>}
       </div>
     </div>
   )
+}
+
+export function OverviewTab() {
+  const { user, profile } = useAuth()
+  const [s, setS] = useState(null)
+  const load = useCallback(() => {
+    dashboardSummary().then(d => setS(d)).catch(() => basicSummary(user.id).then(setS))
+  }, [user.id])
+  useEffect(() => { load() }, [load])
+
   if (!s) return <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><div className="spinner" /></div>
-  const cur = s.wallet?.currency || 'NGN'
+  const cur = s.currency || 'NGN'
+  const applied = (s.job_applications || 0) + (s.proposals_sent || 0)
 
   return (
     <div className="dash-stack">
-      <div className="ov-grid">
-        <Stat icon="fas fa-wallet" label="Wallet balance" value={formatMoney(s.wallet?.balance || 0, cur)} sub={s.wallet?.held ? `${formatMoney(s.wallet.held, cur)} held in escrow` : 'Available to spend or withdraw'} to="/dashboard?tab=wallet" />
-        <Stat icon="fas fa-coins" label="Total earned" value={formatMoney(s.earned_total, cur)} sub={`${formatMoney(s.earned_30d, cur)} in the last 30 days`} to="/dashboard?tab=earnings" />
-        <Stat icon="fas fa-star" label="Rating" value={s.rating ? `${s.rating} ★` : '—'} sub={s.ratings_count ? `${s.ratings_count} review${s.ratings_count > 1 ? 's' : ''}` : 'Complete work to get rated'} to={profile?.username ? `/u/${profile.username}` : undefined} />
-        {isBusiness
-          ? <Stat icon="fas fa-bullhorn" label="Gigs posted" value={s.gigs_posted} sub={`${s.contracts_active} active hire${s.contracts_active === 1 ? '' : 's'}`} to="/dashboard?tab=gigs" />
-          : <Stat icon="fas fa-paper-plane" label="Applications" value={s.job_applications + s.proposals_sent} sub={`${s.job_applications} jobs · ${s.proposals_sent} gig proposals (${s.proposals_accepted} won)`} to="/dashboard?tab=gigs" />}
-        <Stat icon="fas fa-shopping-bag" label="Orders" value={s.orders_bought + s.orders_sold} sub={`${s.orders_sold} sold · ${s.orders_bought} bought · ${s.orders_open} open`} to="/dashboard?tab=orders" />
-        <Stat icon="fas fa-users" label="Network" value={s.followers} sub={`followers · ${s.following} following · ${s.posts || 0} posts`} to="/feed" />
+      <div className="ov-grid ov-grid-5">
+        <Stat icon="fas fa-eye" label="Profile visits" value={s.profile_views_30d ?? '—'}
+          sub={s.basic ? 'Tracking starts shortly' : (trend(s.profile_views_30d, s.profile_views_prev_30d) || `${s.profile_views_total} all time · last 30 days`)}
+          to={profile?.username ? `/u/${profile.username}` : undefined} />
+        <Stat icon="fas fa-check-double" label="Jobs done" value={s.jobs_done}
+          sub={s.jobs_in_progress ? `${s.jobs_in_progress} in progress` : s.rating ? `★ ${Number(s.rating).toFixed(1)} from ${s.ratings_count} review${s.ratings_count === 1 ? '' : 's'}` : 'Completed gigs and sales'}
+          to="/dashboard?tab=gigs" />
+        <Stat icon="fas fa-paper-plane" label="Jobs applied for" value={applied}
+          sub={`${s.job_applications} job${s.job_applications === 1 ? '' : 's'} · ${s.proposals_sent} gig proposal${s.proposals_sent === 1 ? '' : 's'}${s.proposals_accepted ? ` (${s.proposals_accepted} won)` : ''}`}
+          to="/dashboard?tab=gigs" />
+        <Stat icon="fas fa-calendar-check" label="Upcoming interviews" value={s.interviews_upcoming ?? '—'}
+          sub={s.interviews?.[0] ? `Next: ${new Date(s.interviews[0].scheduled_at).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : s.basic ? 'Interview scheduling starts shortly' : 'None scheduled'}
+          tone={s.interviews_upcoming ? 'hot' : ''} />
+        <Stat icon="fas fa-coins" label="Earnings" value={formatMoney(s.earned_total || 0, cur)}
+          sub={`${formatMoney(s.earned_30d || 0, cur)} this month${s.pending_earnings ? ` · ${formatMoney(s.pending_earnings, cur)} pending in escrow` : ''}`}
+          to="/dashboard?tab=earnings" />
+      </div>
+
+      <div className="card">
+        <div className="section-row"><h3 className="section-h">Upcoming interviews</h3></div>
+        {s.interviews?.length
+          ? s.interviews.map(iv => <InterviewRow key={iv.id} iv={iv} onChange={load} />)
+          : <p className="muted">{s.basic ? 'Interviews will appear here once scheduling is switched on.' : 'No interviews scheduled. Employers can invite you straight from your public profile — keep it complete and share it.'}</p>}
       </div>
 
       <div className="ov-two">
         <div className="card">
-          <div className="section-row"><h3 className="section-h">Recent transactions</h3><Link to="/dashboard?tab=wallet" className="link-btn">Wallet →</Link></div>
-          {s.recent_transactions.length === 0 && <p className="muted">No transactions yet. <Link to="/dashboard?tab=wallet">Add funds</Link> to hire, buy or boost.</p>}
-          {s.recent_transactions.map(t => (
-            <div key={t.id} className="ov-row">
-              <div><strong>{TX_LABEL[t.type] || t.type}</strong><span className="muted ellipsis" style={{ display: 'block', fontSize: 12 }}>{t.description}</span></div>
-              <div style={{ textAlign: 'right' }}>
-                <strong style={{ color: t.amount > 0 ? 'var(--color-success)' : t.amount < 0 ? 'var(--color-danger)' : 'inherit' }}>
-                  {t.amount ? `${t.amount > 0 ? '+' : ''}${formatMoney(t.amount, cur)}` : `${formatMoney(Math.abs(t.held_change), cur)} ${t.held_change > 0 ? 'held' : 'released'}`}
-                </strong>
-                <span className="muted" style={{ display: 'block', fontSize: 12 }}>{timeAgo(t.created_at)}</span>
-              </div>
+          <h3 className="section-h">Recent applications</h3>
+          {s.recent_applications?.length ? s.recent_applications.map((a, i) => (
+            <div key={i} className="ov-row">
+              <span><i className={a.kind === 'gig' ? 'fas fa-bolt' : 'fas fa-briefcase'} style={{ color: 'var(--color-primary-dark)', width: 18 }}></i>{' '}
+                <Link to={a.kind === 'gig' ? `/gigs/${a.job_id}` : `/jobs/${a.job_id}`}>{a.title}</Link>{a.company ? ` · ${a.company}` : ''}
+                {a.status && <span className="muted"> · {a.status}</span>}</span>
+              <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{timeAgo(a.created_at)}</span>
             </div>
-          ))}
+          )) : <p className="muted">{applied ? 'Your latest applications will show here.' : <>No applications yet — <Link to="/jobs">find a job or gig</Link>.</>}</p>}
         </div>
 
         <div className="card">
-          <h3 className="section-h">Recent activity</h3>
-          {[...s.recent_applications.map(a => ({ at: a.created_at, icon: 'fas fa-briefcase', text: <>Applied to <Link to={`/jobs/${a.job_id}`}>{a.title}</Link>{a.company ? ` at ${a.company}` : ''}</> })),
-            ...s.recent_proposals.map(p => ({ at: p.created_at, icon: 'fas fa-file-signature', text: <>Proposal on <Link to={`/gigs/${p.gig_id}`}>{p.title}</Link> · <span className="muted">{p.status}</span></> })),
-            ...s.recent_orders.map(o => ({ at: o.created_at, icon: 'fas fa-shopping-bag', text: <>{o.bought ? 'Bought' : 'Sold'} <Link to={`/orders/${o.id}`}>{o.title}</Link> · {formatMoney(o.amount, cur)} · <span className="muted">{ORDER_STATUS[o.status]?.label || o.status}</span></> })),
-          ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 8).map((r, i) => (
-            <div key={i} className="ov-row"><span><i className={r.icon} style={{ color: 'var(--color-primary-dark)', width: 18 }}></i> {r.text}</span><span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{timeAgo(r.at)}</span></div>
+          <div className="section-row"><h3 className="section-h">Recent earnings & completed work</h3><Link to="/dashboard?tab=earnings" className="link-btn">All earnings →</Link></div>
+          {[...(s.recent_jobs_done || []).map(j => ({ at: j.done_at, key: `j${j.kind}${j.id}`, text: <><Link to={j.kind === 'order' ? `/orders/${j.id}` : `/contracts/${j.id}`}>{j.title}</Link>{j.rating ? <span style={{ color: '#f59e0b' }}> · {'★'.repeat(j.rating)}</span> : ''}</>, amount: j.amount })),
+            ...(s.recent_jobs_done?.length ? [] : (s.recent_earnings || []).map(t => ({ at: t.created_at, key: `t${t.id}`, text: t.description, amount: t.amount }))),
+          ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 6).map(r => (
+            <div key={r.key} className="ov-row">
+              <span className="ellipsis">{r.text}</span>
+              <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}><strong style={{ color: 'var(--color-success)' }}>+{formatMoney(r.amount, cur)}</strong><span className="muted" style={{ display: 'block', fontSize: 12 }}>{timeAgo(r.at)}</span></span>
+            </div>
           ))}
-          {!s.recent_applications.length && !s.recent_proposals.length && !s.recent_orders.length && (
-            <p className="muted">Nothing yet — <Link to="/jobs">find a job or gig</Link>, or <Link to="/market">shop the market</Link>.</p>
-          )}
+          {!s.recent_jobs_done?.length && !s.recent_earnings?.length && <p className="muted">Complete a gig or make a sale to start earning.</p>}
         </div>
       </div>
     </div>

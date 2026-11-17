@@ -153,3 +153,12 @@ export const REVIEW_RELATIONSHIPS = [
 export const addReview = ({ revieweeId, rating, title, body, relationship }) =>
   supabase.from('user_reviews').insert({ reviewee_id: revieweeId, rating, title: title || null, body, relationship }).select().single().then(unwrap)
 export const deleteReview = id => supabase.from('user_reviews').delete().eq('id', id).then(unwrap)
+
+// ---------- profile visits & interviews ----------
+export const recordProfileView = profileId => supabase.rpc('record_profile_view', { p_profile: profileId }).then(() => {}, () => {})
+export const INTERVIEW_MODES = { video: 'Video call', phone: 'Phone call', in_person: 'In person' }
+export const scheduleInterview = ({ candidateId, title, scheduledAt, durationMinutes, mode, location, notes }) =>
+  supabase.from('interviews').insert({ candidate_id: candidateId, title, scheduled_at: scheduledAt, duration_minutes: durationMinutes || 30, mode, location: location || null, notes: notes || null }).select().single().then(unwrap)
+export const respondInterview = (id, accept, note) =>
+  supabase.from('interviews').update({ status: accept ? 'accepted' : 'declined', response_note: note || null }).eq('id', id).then(unwrap)
+export const cancelInterview = id => supabase.from('interviews').update({ status: 'cancelled' }).eq('id', id).then(unwrap)

@@ -151,5 +151,5 @@ export const NOTIFICATION_ICON = {
   welcome: 'fas fa-hand-sparkles', kyc: 'fas fa-id-card', address: 'fas fa-map-marker-alt', account: 'fas fa-user-check',
   proposal: 'fas fa-file-signature', contract: 'fas fa-handshake', payment: 'fas fa-wallet', business: 'fas fa-building',
   message: 'fas fa-comment-dots', info: 'fas fa-bell', follow: 'fas fa-user-plus', like: 'fas fa-heart',
-  comment: 'fas fa-comment', post: 'fas fa-newspaper', order: 'fas fa-shopping-bag',
+  comment: 'fas fa-comment', post: 'fas fa-newspaper', order: 'fas fa-shopping-bag', review: 'fas fa-star', interview: 'fas fa-calendar-check',
 }

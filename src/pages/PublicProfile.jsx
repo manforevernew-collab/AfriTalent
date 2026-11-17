@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getPublicProfile, follow, unfollow, profileUrl, addReview, deleteReview, MAX_REVIEWS_PER_PERSON, REVIEW_RELATIONSHIPS } from '../lib/social'
+import { getPublicProfile, follow, unfollow, profileUrl, addReview, deleteReview, MAX_REVIEWS_PER_PERSON, REVIEW_RELATIONSHIPS, recordProfileView, scheduleInterview, INTERVIEW_MODES } from '../lib/social'
 import Rating from '../components/Rating'
 import { timeAgo } from '../context/InboxContext'
 import { PostList } from './Feed'
@@ -15,6 +15,60 @@ const TABS = [
   { id: 'reviews', label: 'Reviews' },
   { id: 'about', label: 'About' },
 ]
+
+function InterviewInvite({ profile, onClose }) {
+  const tomorrow = new Date(Date.now() + 864e5); tomorrow.setHours(10, 0, 0, 0)
+  const pad = n => String(n).padStart(2, '0')
+  const local = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+  const [form, setForm] = useState({ title: '', when: local(tomorrow), duration: 30, mode: 'video', location: '', notes: '' })
+  const [busy, setBusy] = useState(false)
+  const [inviting, setInviting] = useState(false)
+  const [err, setErr] = useState('')
+  const [done, setDone] = useState(false)
+  const set = patch => setForm(v => ({ ...v, ...patch }))
+  async function submit(e) {
+    e.preventDefault()
+    setErr('')
+    if (form.title.trim().length < 3) return setErr('Add a title, e.g. the role you are hiring for.')
+    const at = new Date(form.when)
+    if (!(at > new Date())) return setErr('Pick a time in the future.')
+    setBusy(true)
+    try { await scheduleInterview({ candidateId: profile.id, title: form.title.trim(), scheduledAt: at.toISOString(), durationMinutes: Number(form.duration), mode: form.mode, location: form.location.trim(), notes: form.notes.trim() }); setDone(true) }
+    catch (e2) { setErr(e2.message) }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <form className="modal card" onClick={e => e.stopPropagation()} onSubmit={submit}>
+        {done ? (
+          <>
+            <h3 style={{ fontSize: 18, fontWeight: 700 }}>Invitation sent 📅</h3>
+            <p className="muted">{profile.full_name} has been notified and can accept or decline from their dashboard. You'll be notified when they reply.</p>
+            <button type="button" className="btn btn-primary" onClick={onClose}>Done</button>
+          </>
+        ) : (
+          <>
+            <h3 style={{ fontSize: 18, fontWeight: 700 }}>Invite {profile.full_name} to an interview</h3>
+            <label className="field"><span>Title</span><input className="input" value={form.title} onChange={e => set({ title: e.target.value })} placeholder="e.g. Interior Designer — first interview" maxLength={140} /></label>
+            <div className="composer-grid">
+              <label className="field"><span>Date & time</span><input type="datetime-local" className="input" value={form.when} onChange={e => set({ when: e.target.value })} /></label>
+              <label className="field"><span>Duration</span><select className="input" value={form.duration} onChange={e => set({ duration: e.target.value })}>{[15, 30, 45, 60, 90].map(m => <option key={m} value={m}>{m} minutes</option>)}</select></label>
+            </div>
+            <label className="field"><span>Format</span><select className="input" value={form.mode} onChange={e => set({ mode: e.target.value })}>{Object.entries(INTERVIEW_MODES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+            <label className="field"><span>{form.mode === 'video' ? 'Meeting link' : form.mode === 'phone' ? 'Phone number to call' : 'Address'}</span>
+              <input className="input" value={form.location} onChange={e => set({ location: e.target.value })} placeholder={form.mode === 'video' ? 'https://meet.google.com/…' : form.mode === 'phone' ? '+234…' : 'Office address'} maxLength={300} /></label>
+            <label className="field"><span>Notes (optional)</span><textarea className="input" rows={2} value={form.notes} onChange={e => set({ notes: e.target.value })} placeholder="What to prepare, who they'll meet…" maxLength={2000} /></label>
+            {err && <div className="notice notice-error">{err}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary" disabled={busy} style={{ flex: 1, justifyContent: 'center' }}><i className="fas fa-calendar-plus"></i> {busy ? 'Sending…' : 'Send invitation'}</button>
+              <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+            </div>
+          </>
+        )}
+      </form>
+    </div>
+  )
+}
 
 function ReviewForm({ profile, onAdded }) {
   const [rating, setRating] = useState(0)
@@ -84,6 +138,8 @@ export default function PublicProfile() {
 
   useEffect(() => { if (p) document.title = `${p.full_name} — AfriTalent` ; return () => { document.title = 'AfriTalent — Discover Africa\'s Top Talent & Leading Companies' } }, [p])
 
+  useEffect(() => { if (p?.id && !p.is_me) recordProfileView(p.id) }, [p?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function toggleFollow() {
     if (!user) return navigate(`/login?next=/u/${handle}`)
     setBusy(true)
@@ -137,6 +193,11 @@ export default function PublicProfile() {
                 : <button type="button" className={`btn ${p.is_following ? 'btn-outline' : 'btn-primary'}`} onClick={toggleFollow} disabled={busy}>
                     <i className={p.is_following ? 'fas fa-user-check' : 'fas fa-user-plus'}></i> {p.is_following ? 'Following' : 'Follow'}
                   </button>}
+              {!p.is_me && (
+                <button type="button" className="btn btn-outline" onClick={() => (user ? setInviting(true) : navigate('/login?next=/u/' + handle))}>
+                  <i className="fas fa-calendar-plus"></i> Invite to interview
+                </button>
+              )}
               <ShareMenu url={profileUrl(p.username)} text={p.full_name + (p.rating ? ' ★ ' + Number(p.rating).toFixed(1) + ' (' + p.ratings_count + ' reviews)' : '') + ' on AfriTalent'} label="Share profile" />
             </div>
           </div>
@@ -184,6 +245,7 @@ export default function PublicProfile() {
           <PostList key={tab} scope="profile" author={p.id} kinds={current.kinds} grid={tab !== 'posts'}
             empty={<div className="empty-state card"><i className="far fa-images"></i><p>{p.is_me ? 'Post your work from the Feed — choose “Portfolio”, “Service” or “Product”.' : 'Nothing here yet.'}</p></div>} />
         )}
+        {inviting && <InterviewInvite profile={p} onClose={() => setInviting(false)} />}
       </div>
     </div>
   )

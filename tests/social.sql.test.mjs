@@ -54,6 +54,9 @@ console.log('✔ social/marketplace migration applied (twice)')
 await db.exec(file('supabase-reviews-search-migration.sql'))
 await db.exec(file('supabase-reviews-search-migration.sql'))
 console.log('✔ reviews/search migration applied (twice)')
+await db.exec(file('supabase-visits-interviews-migration.sql'))
+await db.exec(file('supabase-visits-interviews-migration.sql'))
+console.log('✔ visits/interviews migration applied (twice)')
 
 const U = { admin: '00000000-0000-0000-0000-00000000000a', ada: '00000000-0000-0000-0000-0000000000a1', kofi: '00000000-0000-0000-0000-0000000000b2', zee: '00000000-0000-0000-0000-0000000000c3' }
 for (const [k, id] of Object.entries(U)) await db.query('INSERT INTO auth.users (id, email) VALUES ($1, $2)', [id, `${k}@test.dev`])
@@ -195,8 +198,8 @@ console.log('✔ order: dispute → admin refund; services auto-release after th
 // ---- dashboard summary --------------------------------------------------------------------
 await as('ada')
 const sum = (await one('SELECT public.dashboard_summary() AS s')).s
-assert.equal(sum.orders_sold, 4); assert.equal(Number(sum.rating), 5); assert.ok(sum.earned_total > 0)
-assert.equal(sum.followers, 1); assert.ok(sum.recent_transactions.length > 0)
+assert.equal(sum.jobs_done, 2); assert.equal(Number(sum.rating), 5); assert.ok(sum.earned_total > 0)
+assert.ok(sum.recent_earnings.length > 0); assert.equal(sum.recent_jobs_done.length, 2)
 await as('zee')
 await db.exec('GRANT USAGE ON SCHEMA auth TO authenticated, anon; SET ROLE authenticated')
 assert.equal((await all('SELECT * FROM orders')).length, 0, 'orders private to their parties')
@@ -246,5 +249,42 @@ assert.equal((await one("SELECT public.search_directory('%') AS s")).s.people.le
 assert.equal((await one("SELECT public.search_directory('%%%') AS s")).s.people.length, 0, 'wildcards escaped')
 assert.equal((await one("SELECT public.search_directory('admin') AS s")).s.people.length, 0, 'admins hidden')
 console.log('✔ search: people (with ratings), businesses, jobs')
+
+
+// ---- profile visits ---------------------------------------------------------------------------
+await as('kofi'); await db.query('SELECT public.record_profile_view($1)', [U.ada]); await db.query('SELECT public.record_profile_view($1)', [U.ada])
+await as('zee'); await db.query('SELECT public.record_profile_view($1)', [U.ada])
+await as('ada'); await db.query('SELECT public.record_profile_view($1)', [U.ada])   // own visit ignored
+await db.exec("SELECT set_config('test.role', 'anon', false), set_config('test.uid', '', false)")
+await db.query('SELECT public.record_profile_view($1)', [U.ada])
+await as('ada')
+let ds = (await one('SELECT public.dashboard_summary() AS s')).s
+assert.equal(ds.profile_views_30d, 3, 'unique daily visitors, owner excluded (kofi, zee, one anonymous)')
+console.log('✔ profile visits: unique per visitor per day, own visits ignored')
+
+// ---- interviews ---------------------------------------------------------------------------------
+await as('kofi')
+await assert.rejects(() => db.query("INSERT INTO interviews (candidate_id, title, scheduled_at) VALUES ($1, 'Past slot', now() - interval '1 day')", [U.ada]), /future/)
+const iv = await one("INSERT INTO interviews (candidate_id, title, scheduled_at, mode, location) VALUES ($1, 'Senior designer interview', now() + interval '2 days', 'video', 'https://meet.example/abc') RETURNING *", [U.ada])
+assert.equal(iv.employer_id, U.kofi)
+assert.ok((await notes('ada')).some(n => n.kind === 'interview'))
+await as('ada')
+await db.query("UPDATE interviews SET status = 'completed', scheduled_at = now() + interval '9 days', title = 'hacked' WHERE id = $1", [iv.id])
+r = await one('SELECT status, title FROM interviews WHERE id = $1', [iv.id])
+assert.deepEqual([r.status, r.title], ['scheduled', 'Senior designer interview'], 'candidate can only accept/decline')
+await db.query("UPDATE interviews SET status = 'accepted', response_note = 'See you then' WHERE id = $1", [iv.id])
+assert.equal((await one('SELECT status FROM interviews WHERE id = $1', [iv.id])).status, 'accepted')
+assert.ok((await notes('kofi')).some(n => /accepted your interview/.test(n.title)))
+ds = (await one('SELECT public.dashboard_summary() AS s')).s
+assert.equal(ds.interviews_upcoming, 1); assert.equal(ds.interviews[0].other_name, 'Kofi Mensah'); assert.equal(ds.interviews[0].as_candidate, true)
+assert.ok(ds.jobs_done >= 2); assert.ok(ds.earned_total > 0); assert.ok(ds.recent_jobs_done.length >= 2)
+await as('kofi')
+await db.query("UPDATE interviews SET scheduled_at = now() + interval '3 days' WHERE id = $1", [iv.id])
+assert.equal((await one('SELECT status FROM interviews WHERE id = $1', [iv.id])).status, 'scheduled', 'reschedule asks the candidate again')
+await as('zee')
+await db.exec('SET ROLE authenticated')
+assert.equal((await all('SELECT * FROM interviews')).length, 0, 'interviews private to the two parties')
+await db.exec('RESET ROLE')
+console.log('✔ interviews: invite, candidate accept/decline only, reschedule, privacy, notifications, summary')
 
 console.log('\nAll social & marketplace SQL checks passed')
