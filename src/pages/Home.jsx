@@ -243,7 +243,7 @@ export default function Home() {
             Join millions of professionals who trust AfriTalent to find their next big opportunity.
           </p>
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link to="/login" style={{ padding: '16px 32px', background: 'white', color: '#b45309', fontWeight: 600, borderRadius: 12, fontSize: 15 }}>
+            <Link to="/signup" style={{ padding: '16px 32px', background: 'white', color: '#b45309', fontWeight: 600, borderRadius: 12, fontSize: 15 }}>
               Create Free Account
             </Link>
             <Link to="/post-job" style={{ padding: '16px 32px', background: '#b45309', color: 'white', fontWeight: 600, borderRadius: 12, fontSize: 15, border: '1px solid #fbbf24' }}>

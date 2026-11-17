@@ -1,6 +1,16 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, getEnabledProviders } from '../lib/supabase'
+import { rememberNext, takeRememberedNext, PROVIDER_NAMES } from '../lib/authHelpers'
+
+const TYPE_KEY = 'afri.signupType'
+const USER_TYPES = ['job_seeker', 'business']
+function setPendingUserType(type) {
+  try { if (USER_TYPES.includes(type)) sessionStorage.setItem(TYPE_KEY, type); else sessionStorage.removeItem(TYPE_KEY) } catch { /* storage blocked */ }
+}
+function takePendingUserType() {
+  try { const t = sessionStorage.getItem(TYPE_KEY); sessionStorage.removeItem(TYPE_KEY); return USER_TYPES.includes(t) ? t : null } catch { return null }
+}
 
 const AuthContext = createContext()
 
@@ -14,6 +24,14 @@ export function AuthProvider({ children }) {
     if (!supabase) {
       setLoading(false)
       return
+    }
+
+    // A failed Google/LinkedIn or email-link sign-in comes back with ?error=… / #error=… on the
+    // redirect URL — show it on the login page instead of silently landing on the home page.
+    const urlErr = new URLSearchParams(window.location.search).get('error_description')
+      || new URLSearchParams(window.location.hash.replace(/^#/, '')).get('error_description')
+    if (urlErr && !['/login', '/reset-password'].includes(window.location.pathname)) {
+      navigate(`/login?error_description=${encodeURIComponent(urlErr)}`, { replace: true })
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -50,11 +68,23 @@ export function AuthProvider({ children }) {
         return
       }
 
+      // Account type picked on the sign-up page before a Google/LinkedIn round-trip
+      const pendingType = takePendingUserType()
+      if (data && pendingType && !data.setup_complete && data.user_type !== pendingType) {
+        const { error: typeErr } = await supabase.from('profiles').update({ user_type: pendingType }).eq('id', userId)
+        if (!typeErr) data.user_type = pendingType
+      }
+
       setProfile(data)
       setLoading(false)
 
+      // Don't hijack the password-reset page (recovery links sign the user in)
+      if (window.location.pathname === '/reset-password') return
+      const next = takeRememberedNext()
       if (data && !data.setup_complete && data.kyc_status === 'unverified') {
         navigate('/setup')
+      } else if (next) {
+        navigate(next, { replace: true })
       }
     } catch (error) {
       console.error('Profile fetch failed:', error)
@@ -78,19 +108,43 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
-  const signInWithOAuth = async (provider) => {
+  // next: where to land afterwards; userType: account type chosen on the sign-up page
+  const signInWithOAuth = async (provider, { next, userType } = {}) => {
     if (!supabase) return { data: null, error: new Error('Supabase is not configured.') }
     // Never send people to Supabase's raw "provider is not enabled" error page
     const enabled = await getEnabledProviders()
     if (enabled && !enabled[provider]) {
-      const name = { google: 'Google', linkedin_oidc: 'LinkedIn' }[provider] || provider
+      const name = PROVIDER_NAMES[provider] || provider
       return { data: null, error: new Error(`${name} sign-in isn't available yet. Please use your email and password.`) }
     }
+    rememberNext(next)
+    setPendingUserType(userType)
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: window.location.origin }
+      options: {
+        redirectTo: window.location.origin,
+        ...(provider === 'google' ? { queryParams: { prompt: 'select_account' } } : {}),
+      }
     })
     return { data, error }
+  }
+
+  const resendConfirmation = async (email) => {
+    if (!supabase) return { error: new Error('Supabase is not configured.') }
+    const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: window.location.origin } })
+    return { error }
+  }
+
+  const sendPasswordReset = async (email) => {
+    if (!supabase) return { error: new Error('Supabase is not configured.') }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` })
+    return { error }
+  }
+
+  const updatePassword = async (password) => {
+    if (!supabase) return { error: new Error('Supabase is not configured.') }
+    const { error } = await supabase.auth.updateUser({ password })
+    return { error }
   }
 
   const signOut = async () => {
@@ -117,6 +171,7 @@ export function AuthProvider({ children }) {
       user, profile, loading,
       isAdmin, isBusiness, isJobSeeker, kycVerified, addressVerified, setupComplete,
       signInWithEmail, signUpWithEmail, signInWithOAuth, signOut,
+      resendConfirmation, sendPasswordReset, updatePassword,
       refreshProfile: () => user && fetchProfile(user.id)
     }}>
       {children}
