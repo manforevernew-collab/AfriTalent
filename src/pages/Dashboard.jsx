@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { verifyTopup } from '../lib/marketplace'
 import VerificationBanner from '../components/VerificationBanner'
 import { OverviewTab, OrdersTab } from '../components/dashboard/Overview'
+import { AccountHeader, ProfileSettings } from '../components/account/AccountProfile'
 import { EarningsTab, WalletTab, PromoteTab, SupportTab, ContractsList, MyGigs, MyProposals } from '../components/dashboard/Tabs'
 
 const SEEKER_TABS = [
@@ -13,6 +14,7 @@ const SEEKER_TABS = [
   { id: 'wallet', label: 'Wallet', icon: 'fas fa-wallet' },
   { id: 'orders', label: 'Orders', icon: 'fas fa-shopping-bag' },
   { id: 'support', label: 'Support', icon: 'far fa-life-ring' },
+  { id: 'profile', label: 'Profile & settings', icon: 'fas fa-user-cog' },
 ]
 const BUSINESS_TABS = [
   { id: 'overview', label: 'Overview', icon: 'fas fa-chart-pie' },
@@ -21,6 +23,7 @@ const BUSINESS_TABS = [
   { id: 'orders', label: 'Orders', icon: 'fas fa-shopping-bag' },
   { id: 'promote', label: 'Ads & boosts', icon: 'fas fa-bullhorn' },
   { id: 'support', label: 'Support', icon: 'far fa-life-ring' },
+  { id: 'profile', label: 'Profile & settings', icon: 'fas fa-user-cog' },
 ]
 
 export function AccountBanner() {
@@ -37,7 +40,7 @@ export function AccountBanner() {
 }
 
 export default function Dashboard() {
-  const { profile, isBusiness } = useAuth()
+  const { isBusiness } = useAuth()
   const [params, setParams] = useSearchParams()
   const tabs = isBusiness ? BUSINESS_TABS : SEEKER_TABS
   const tab = tabs.some(t => t.id === params.get('tab')) ? params.get('tab') : tabs[0].id
@@ -57,20 +60,15 @@ export default function Dashboard() {
   return (
     <div className="page-enter">
       <div className="container dash">
-        <div className="dash-head">
-          <div>
-            <h1>Hi {profile?.full_name?.split(' ')[0] || 'there'} 👋</h1>
-            <p className="muted">Your activity at a glance — earnings, wallet, applications, orders and ratings.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {profile?.username && <Link to={`/u/${profile.username}`} className="btn btn-outline"><i className="far fa-id-badge"></i> My public profile</Link>}
-            {isBusiness ? <Link to="/gigs/new" className="btn btn-primary"><i className="fas fa-plus"></i> Post a gig</Link> : <Link to="/jobs?tab=gigs" className="btn btn-primary"><i className="fas fa-search"></i> Find gigs</Link>}
-          </div>
-        </div>
+        <AccountHeader
+          onEdit={() => { setParams({ tab: 'profile' }, { replace: true }); setTimeout(() => document.getElementById('dash-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}
+          actions={isBusiness
+            ? <Link to="/gigs/new" className="btn btn-primary"><i className="fas fa-plus"></i> Post a gig</Link>
+            : <Link to="/jobs?tab=gigs" className="btn btn-primary"><i className="fas fa-search"></i> Find gigs</Link>} />
         <AccountBanner />
         <VerificationBanner purpose={isBusiness ? 'withdraw funds and hire' : 'send proposals and get paid'} />
 
-        <nav className="dash-tabs" aria-label="Dashboard sections">
+        <nav className="dash-tabs" id="dash-tabs" aria-label="Account sections">
           {tabs.map(t => <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setParams({ tab: t.id }, { replace: true })}><i className={t.icon}></i> {t.label}</button>)}
         </nav>
 
@@ -89,6 +87,7 @@ export default function Dashboard() {
         )}
         {tab === 'promote' && <PromoteTab />}
         {tab === 'support' && <SupportTab />}
+        {tab === 'profile' && <ProfileSettings />}
       </div>
     </div>
   )

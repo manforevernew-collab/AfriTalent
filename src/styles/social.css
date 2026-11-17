@@ -158,3 +158,8 @@ a.ov-stat:hover { box-shadow: 0 8px 24px rgba(15,23,42,0.08); }
 .review-card { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--color-border); }
 @media (max-width: 1180px) { .desktop-search { max-width: 220px; margin: 0 8px; } }
 @media (max-width: 768px) { .desktop-search { display: none; } .nav-search-pop { width: 100%; } }
+
+/* merged account page */
+.account-hero { margin-bottom: 16px; }
+.account-cta { flex-wrap: wrap; justify-content: flex-end; max-width: 420px; }
+@media (max-width: 760px) { .account-cta { justify-content: flex-start; max-width: none; } }

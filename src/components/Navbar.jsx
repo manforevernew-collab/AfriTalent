@@ -314,7 +314,7 @@ export default function Navbar() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 8 }}>
               <NotificationBell />
               <MessageIcon />
-              <Link to="/profile" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Link to="/dashboard" title="My account" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {getAvatarContent()}
               </Link>
               <button className="btn btn-outline" onClick={handleSignOut} style={{ padding: '8px 14px', fontSize: 13 }}>Logout</button>

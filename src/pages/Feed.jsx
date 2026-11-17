@@ -67,7 +67,7 @@ export default function Feed() {
                 <span><b>{profile?.posts_count ?? 0}</b> posts</span>
               </div>
               {profile?.username && <Link to={`/u/${profile.username}`} className="btn btn-outline btn-sm" style={{ justifyContent: 'center' }}>View my profile</Link>}
-              <Link to="/profile" className="link-btn" style={{ fontSize: 13 }}>Edit profile</Link>
+              <Link to="/dashboard?tab=profile" className="link-btn" style={{ fontSize: 13 }}>Edit profile</Link>
             </div>
           )}
         </aside>

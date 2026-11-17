@@ -133,7 +133,7 @@ export default function PublicProfile() {
             </div>
             <div className="profile-cta">
               {p.is_me
-                ? <Link to="/profile" className="btn btn-outline"><i className="fas fa-pen"></i> Edit profile</Link>
+                ? <Link to="/dashboard?tab=profile" className="btn btn-outline"><i className="fas fa-pen"></i> Edit profile</Link>
                 : <button type="button" className={`btn ${p.is_following ? 'btn-outline' : 'btn-primary'}`} onClick={toggleFollow} disabled={busy}>
                     <i className={p.is_following ? 'fas fa-user-check' : 'fas fa-user-plus'}></i> {p.is_following ? 'Following' : 'Follow'}
                   </button>}
