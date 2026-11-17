@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getPublicProfile, follow, unfollow, profileUrl } from '../lib/social'
+import { getPublicProfile, follow, unfollow, profileUrl, addReview, deleteReview, MAX_REVIEWS_PER_PERSON, REVIEW_RELATIONSHIPS } from '../lib/social'
+import Rating from '../components/Rating'
+import { timeAgo } from '../context/InboxContext'
 import { PostList } from './Feed'
 import { ShareMenu, SetupPending } from '../components/social/SocialUI'
 import UserAvatar from '../components/UserAvatar'
@@ -10,8 +12,53 @@ const TABS = [
   { id: 'portfolio', label: 'Portfolio', kinds: ['portfolio'] },
   { id: 'shop', label: 'Services & products', kinds: ['service', 'product'] },
   { id: 'posts', label: 'All posts', kinds: null },
-  { id: 'about', label: 'About & reviews' },
+  { id: 'reviews', label: 'Reviews' },
+  { id: 'about', label: 'About' },
 ]
+
+function ReviewForm({ profile, onAdded }) {
+  const [rating, setRating] = useState(0)
+  const [relationship, setRelationship] = useState('customer')
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const left = MAX_REVIEWS_PER_PERSON - (profile.my_review_count || 0)
+  if (left <= 0) return <p className="muted" style={{ fontSize: 13 }}>You've left the maximum of {MAX_REVIEWS_PER_PERSON} reviews for {profile.full_name}.</p>
+
+  async function submit(e) {
+    e.preventDefault()
+    setErr('')
+    if (!rating) return setErr('Choose a star rating.')
+    if (body.trim().length < 10) return setErr('Write at least 10 characters about your experience.')
+    setBusy(true)
+    try { await addReview({ revieweeId: profile.id, rating, title: title.trim(), body: body.trim(), relationship }); setRating(0); setTitle(''); setBody(''); onAdded() }
+    catch (e2) { setErr(e2.message) }
+    finally { setBusy(false) }
+  }
+  return (
+    <form className="review-form" onSubmit={submit}>
+      <strong>Review {profile.full_name}</strong>
+      <div className="star-input" role="radiogroup" aria-label="Rating">
+        {[1, 2, 3, 4, 5].map(n => (
+          <button key={n} type="button" role="radio" aria-checked={rating === n} aria-label={n + ' star' + (n > 1 ? 's' : '')} onClick={() => setRating(n)}>
+            <i className={n <= rating ? 'fas fa-star' : 'far fa-star'}></i>
+          </button>
+        ))}
+      </div>
+      <select className="input" value={relationship} onChange={e => setRelationship(e.target.value)} aria-label="How do you know them?">
+        {REVIEW_RELATIONSHIPS.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+      </select>
+      <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Title (optional)" maxLength={120} />
+      <textarea className="input" rows={3} value={body} onChange={e => setBody(e.target.value)} placeholder="What was it like working with or buying from them? Be honest and specific." maxLength={2000} />
+      {err && <div className="notice notice-error">{err}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <button className="btn btn-primary btn-sm" disabled={busy}>{busy ? 'Posting…' : 'Post review'}</button>
+        <span className="muted" style={{ fontSize: 12 }}>You can leave {left} more review{left === 1 ? '' : 's'} for this person. Reviews from completed orders or gigs show as “Verified customer”.</span>
+      </div>
+    </form>
+  )
+}
 
 function Stars({ value }) {
   const v = Math.round(Number(value) || 0)
@@ -27,6 +74,7 @@ export default function PublicProfile() {
   const [tab, setTab] = useState('portfolio')
   const [busy, setBusy] = useState(false)
 
+  const reload = () => getPublicProfile(handle).then(d => setP(d || null)).catch(setError)
   useEffect(() => {
     let alive = true
     setP(undefined)
@@ -75,7 +123,7 @@ export default function PublicProfile() {
                 <span><b>{p.followers}</b> followers</span>
                 <span><b>{p.following}</b> following</span>
                 <span><b>{p.jobs_completed}</b> jobs done</span>
-                {p.rating && <span><Stars value={p.rating} /> <b>{p.rating}</b> ({p.ratings_count})</span>}
+                <button type="button" className="link-btn" onClick={() => setTab('reviews')} style={{ padding: 0 }}><Rating value={p.rating} count={p.ratings_count} /></button>
               </div>
               <div className="profile-badges">
                 {p.kyc_verified && <span className="pill pill-direct"><i className="fas fa-id-card"></i> ID verified</span>}
@@ -89,7 +137,7 @@ export default function PublicProfile() {
                 : <button type="button" className={`btn ${p.is_following ? 'btn-outline' : 'btn-primary'}`} onClick={toggleFollow} disabled={busy}>
                     <i className={p.is_following ? 'fas fa-user-check' : 'fas fa-user-plus'}></i> {p.is_following ? 'Following' : 'Follow'}
                   </button>}
-              <ShareMenu url={profileUrl(p.username)} text={`${p.full_name} on AfriTalent`} label="Share profile" />
+              <ShareMenu url={profileUrl(p.username)} text={p.full_name + (p.rating ? ' ★ ' + Number(p.rating).toFixed(1) + ' (' + p.ratings_count + ' reviews)' : '') + ' on AfriTalent'} label="Share profile" />
             </div>
           </div>
           {p.skills?.length > 0 && <div className="post-tags" style={{ padding: '0 24px 20px' }}>{p.skills.map(s => <span key={s} className="pill pill-muted">{s}</span>)}</div>}
@@ -97,19 +145,38 @@ export default function PublicProfile() {
 
         <SetupPending error={error} />
         <nav className="dash-tabs" style={{ marginTop: 16 }}>
-          {TABS.map(t => <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>)}
+          {TABS.map(t => <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}{t.id === 'reviews' && p.ratings_count ? ' (' + p.ratings_count + ')' : ''}</button>)}
         </nav>
 
         {tab === 'about' ? (
           <div className="card">
             <h3 className="section-h">About</h3>
             <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{p.bio || 'No bio yet.'}</p>
-            <h3 className="section-h" style={{ marginTop: 24 }}>Reviews</h3>
+          </div>
+        ) : tab === 'reviews' ? (
+          <div className="card">
+            <div className="section-row">
+              <h3 className="section-h">Reviews</h3>
+              <Rating value={p.rating} count={p.ratings_count} size={15} />
+            </div>
+            {!p.is_me && (user
+              ? <ReviewForm profile={p} onAdded={reload} />
+              : <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}><Link to={'/login?next=/u/' + p.username}>Sign in</Link> to review {p.full_name}.</p>)}
             {p.reviews?.length ? p.reviews.map((r, i) => (
-              <div key={i} className="review-row">
-                <Stars value={r.rating} /> <strong>{r.title}</strong>
-                {r.text && <p style={{ marginTop: 4 }}>{r.text}</p>}
-                <span className="muted" style={{ fontSize: 12 }}>{r.at ? new Date(r.at).toLocaleDateString() : ''}</span>
+              <div key={r.id || i} className="review-card">
+                <Link to={r.reviewer_username ? '/u/' + r.reviewer_username : '#'}><UserAvatar src={r.reviewer_avatar} name={r.reviewer_name} size={40} /></Link>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <strong>{r.reviewer_name || 'AfriTalent member'}</strong>
+                    {r.verified && <span className="pill pill-direct" style={{ fontSize: 11 }}><i className="fas fa-check"></i> Verified customer</span>}
+                    <span className="muted" style={{ fontSize: 12 }}>{r.source === 'order' ? 'Order review' : r.source === 'contract' ? 'Gig review' : REVIEW_RELATIONSHIPS.find(x => x.id === r.relationship)?.label}{r.at ? ' · ' + timeAgo(r.at) : ''}</span>
+                  </div>
+                  <Stars value={r.rating} />{r.title && <strong style={{ marginLeft: 6 }}>{r.title}</strong>}
+                  {r.text && <p style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{r.text}</p>}
+                  {r.reviewer_id && r.reviewer_id === user?.id && (
+                    <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={async () => { if (window.confirm('Delete your review?')) { await deleteReview(r.id).catch(() => {}); reload() } }}>Delete my review</button>
+                  )}
+                </div>
               </div>
             )) : <p className="muted">No reviews yet.</p>}
           </div>

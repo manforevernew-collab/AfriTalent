@@ -7,6 +7,8 @@ Options -Indexes
   # Force HTTPS
   RewriteCond %{HTTPS} !=on
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+  # Public profiles get link previews (name, ★ rating, photo) for WhatsApp/LinkedIn/X
+  RewriteRule ^u/([A-Za-z0-9_-]{2,40})/?$ share.php?u=$1 [L,QSA]
   # Real files and folders are served as-is
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d

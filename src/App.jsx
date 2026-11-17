@@ -28,6 +28,7 @@ import Market from './pages/Market'
 import PostDetail from './pages/PostDetail'
 import PublicProfile from './pages/PublicProfile'
 import OrderDetail from './pages/OrderDetail'
+import Search from './pages/Search'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import Messages from './pages/Messages'
@@ -87,6 +88,7 @@ function App() {
           <Route path="/gigs" element={<Navigate to="/jobs?tab=gigs" replace />} />
           <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
           <Route path="/market" element={<Market />} />
+          <Route path="/search" element={<Search />} />
           <Route path="/posts/:id" element={<PostDetail />} />
           <Route path="/u/:handle" element={<PublicProfile />} />
           <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />

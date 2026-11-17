@@ -4,6 +4,7 @@ import { useState } from 'react'
 import AfriTalentLogo from './AfriTalentLogo'
 import { useInbox, timeAgo, NOTIFICATION_ICON } from '../context/InboxContext'
 import UserAvatar from './UserAvatar'
+import SearchBar from './SearchBar'
 
 export default function Navbar() {
   const { user, profile, isAdmin, isBusiness, isJobSeeker, kycVerified, addressVerified, signOut } = useAuth()
@@ -25,7 +26,6 @@ export default function Navbar() {
         { path: '/feed', label: 'Feed' },
         { path: '/jobs', label: 'Jobs', also: ['/gigs'] },
         { path: '/market', label: 'Market' },
-        { path: '/messages', label: 'Messages' },
       ]
     : [
         { path: '/professionals', label: 'Professionals' },
@@ -286,6 +286,8 @@ export default function Navbar() {
           <AfriTalentLogo size="sm" />
         </Link>
 
+        <div className="desktop-search"><SearchBar /></div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} className="desktop-nav">
           {navLinks.map(link => (
             <Link key={link.path} to={link.path} className="btn btn-ghost"
@@ -346,6 +348,7 @@ export default function Navbar() {
 
       {menuOpen && (
         <div className="mobile-menu" style={{ display: 'none', borderTop: '1px solid var(--color-border)', padding: '12px 24px', background: 'white', maxHeight: '70vh', overflowY: 'auto' }}>
+          <div style={{ padding: '4px 0 10px' }}><SearchBar onNavigate={() => setMenuOpen(false)} /></div>
           {navLinks.map(link => (
             <Link key={link.path} to={link.path} className="btn btn-ghost" onClick={() => setMenuOpen(false)} style={{ display: 'block', width: '100%', textAlign: 'left' }}>{link.label}</Link>
           ))}

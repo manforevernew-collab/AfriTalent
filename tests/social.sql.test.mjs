@@ -24,10 +24,13 @@ await db.exec(`
   CREATE TABLE profiles (id uuid PRIMARY KEY REFERENCES auth.users(id), full_name text, role text DEFAULT 'user', user_type text,
     kyc_status text DEFAULT 'unverified', address_status text DEFAULT 'unverified', avatar_url text, setup_complete boolean DEFAULT false,
     created_at timestamptz DEFAULT now());
-  CREATE TABLE jobs (id serial PRIMARY KEY, title text, company text, posted_by uuid, is_active boolean DEFAULT true);
-  CREATE TABLE companies (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text, claimed_by uuid, is_active boolean DEFAULT true);
+  CREATE TABLE jobs (id serial PRIMARY KEY, title text, company text, posted_by uuid, is_active boolean DEFAULT true, location text, work_mode text, posted_at timestamptz DEFAULT now());
+  CREATE TABLE companies (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text, claimed_by uuid, is_active boolean DEFAULT true,
+    category text, industry text, city text, country text, logo_url text, verified boolean DEFAULT false, rating numeric, review_count int DEFAULT 0);
   CREATE TABLE applications (id serial PRIMARY KEY, job_id int, user_id uuid, created_at timestamptz DEFAULT now());
-  CREATE TABLE reviews (id serial PRIMARY KEY); CREATE TABLE professionals (id serial PRIMARY KEY);
+  CREATE TABLE reviews (id serial PRIMARY KEY, company_id uuid, professional_id int, user_id uuid, rating int, body text, created_at timestamptz DEFAULT now());
+  ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
+  CREATE TABLE professionals (id serial PRIMARY KEY);
   CREATE TABLE company_claims (id serial PRIMARY KEY, status text, user_id uuid, company_id uuid, reviewer_note text);
   CREATE TABLE kyc_verifications (id serial PRIMARY KEY, user_id uuid, status text DEFAULT 'pending', auto_status text, auto_checked_at timestamptz,
     submitted_at timestamptz DEFAULT now(), reviewer_note text);
@@ -48,6 +51,9 @@ console.log('✔ notifications migration applied')
 await db.exec(file('supabase-social-marketplace-migration.sql'))
 await db.exec(file('supabase-social-marketplace-migration.sql'))   // re-runnable
 console.log('✔ social/marketplace migration applied (twice)')
+await db.exec(file('supabase-reviews-search-migration.sql'))
+await db.exec(file('supabase-reviews-search-migration.sql'))
+console.log('✔ reviews/search migration applied (twice)')
 
 const U = { admin: '00000000-0000-0000-0000-00000000000a', ada: '00000000-0000-0000-0000-0000000000a1', kofi: '00000000-0000-0000-0000-0000000000b2', zee: '00000000-0000-0000-0000-0000000000c3' }
 for (const [k, id] of Object.entries(U)) await db.query('INSERT INTO auth.users (id, email) VALUES ($1, $2)', [id, `${k}@test.dev`])
@@ -199,4 +205,46 @@ assert.equal((await all('SELECT * FROM orders')).length, 4, 'buyer sees own orde
 await assert.rejects(() => db.query("UPDATE orders SET status = 'completed'"), /permission denied/)
 await db.exec('RESET ROLE')
 console.log('✔ dashboard summary + order privacy')
+
+// ---- member reviews: max 3 per reviewer, verified flag, combined rating ---------------------
+await as('kofi')
+for (let i = 1; i <= 3; i++) await db.query("INSERT INTO user_reviews (reviewee_id, rating, body) VALUES ($1, $2, 'Great work, delivered on time')", [U.ada, 3 + (i % 3)])
+await assert.rejects(() => db.query("INSERT INTO user_reviews (reviewee_id, rating, body) VALUES ($1, 1, 'Fourth review attempt here')", [U.ada]), /at most 3 reviews/)
+assert.equal((await one('SELECT verified FROM user_reviews WHERE reviewer_id = $1 LIMIT 1', [U.kofi])).verified, true, 'kofi bought from ada → verified')
+await assert.rejects(() => db.query("INSERT INTO user_reviews (reviewee_id, rating, body) VALUES ($1, 5, 'Reviewing myself!!')", [U.kofi]), /yourself|check/)
+await as('zee')
+await db.query("INSERT INTO user_reviews (reviewee_id, rating, body) VALUES ($1, 2, 'Never replied to my messages')", [U.ada])
+assert.equal((await one('SELECT verified FROM user_reviews WHERE reviewer_id = $1', [U.zee])).verified, false)
+await db.query('UPDATE user_reviews SET verified = true, reviewee_id = $1 WHERE reviewer_id = $2', [U.kofi, U.zee])
+r = await one('SELECT verified, reviewee_id FROM user_reviews WHERE reviewer_id = $1', [U.zee])
+assert.deepEqual([r.verified, r.reviewee_id], [false, U.ada], 'reviewers cannot fake verification or move a review')
+let pr = (await one("SELECT public.get_public_profile('ada-obi') AS p")).p
+assert.equal(pr.ratings_count, 5, '1 order rating + 4 reviews'); assert.ok(pr.rating > 0); assert.equal(pr.my_review_count, 1)
+assert.ok(pr.reviews.some(x => x.reviewer_name === 'Zee'))
+assert.ok((await notes('ada')).some(n => n.kind === 'review'))
+console.log('✔ member reviews: 3-per-reviewer cap, verified customers, combined rating, notifications')
+
+await asService()
+const co = await one("INSERT INTO companies (name, category, city, claimed_by, verified) VALUES ('Kente House', 'Retail', 'Lagos', $1, true) RETURNING id", [U.ada])
+await as('zee')
+for (let i = 0; i < 3; i++) await db.query('INSERT INTO reviews (company_id, rating, body) VALUES ($1, 4, $2)', [co.id, 'ok ' + i])
+await assert.rejects(() => db.query("INSERT INTO reviews (company_id, rating, body) VALUES ($1, 1, 'again')", [co.id]), /at most 3 reviews/)
+assert.equal((await one('SELECT user_id FROM reviews LIMIT 1')).user_id, U.zee, 'author forced to caller')
+await as('ada')
+await assert.rejects(() => db.query("INSERT INTO reviews (company_id, rating, body) VALUES ($1, 5, 'mine')", [co.id]), /own business/)
+console.log('✔ business reviews: 3-per-reviewer cap, owners cannot review themselves')
+
+await asService()
+await db.query("INSERT INTO jobs (title, company) VALUES ('Interior Designer', 'Kente House')")
+let sr = (await one("SELECT public.search_directory('ada') AS s")).s
+assert.equal(sr.people[0].username, 'ada-obi'); assert.ok(sr.people[0].ratings_count >= 5)
+sr = (await one("SELECT public.search_directory('kente') AS s")).s
+assert.equal(sr.businesses[0].name, 'Kente House'); assert.equal(sr.jobs[0].title, 'Interior Designer')
+sr = (await one("SELECT public.search_directory('interior designer') AS s")).s
+assert.equal(sr.people[0] && sr.people[0].username, 'ada-obi', 'matches headline')
+assert.equal((await one("SELECT public.search_directory('%') AS s")).s.people.length, 0, 'too short')
+assert.equal((await one("SELECT public.search_directory('%%%') AS s")).s.people.length, 0, 'wildcards escaped')
+assert.equal((await one("SELECT public.search_directory('admin') AS s")).s.people.length, 0, 'admins hidden')
+console.log('✔ search: people (with ratings), businesses, jobs')
+
 console.log('\nAll social & marketplace SQL checks passed')

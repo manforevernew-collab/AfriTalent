@@ -140,3 +140,16 @@ export function shareLinks(url, text) {
     facebook: `https://www.facebook.com/sharer/sharer.php?u=${u}`,
   }
 }
+
+// ---------- member reviews (max 3 per reviewer per person, enforced in the database) ----------
+export const MAX_REVIEWS_PER_PERSON = 3
+export const REVIEW_RELATIONSHIPS = [
+  { id: 'customer', label: 'I bought from them' },
+  { id: 'client', label: 'I hired them' },
+  { id: 'employer', label: 'They hired me' },
+  { id: 'colleague', label: 'We worked together' },
+  { id: 'other', label: 'Other' },
+]
+export const addReview = ({ revieweeId, rating, title, body, relationship }) =>
+  supabase.from('user_reviews').insert({ reviewee_id: revieweeId, rating, title: title || null, body, relationship }).select().single().then(unwrap)
+export const deleteReview = id => supabase.from('user_reviews').delete().eq('id', id).then(unwrap)

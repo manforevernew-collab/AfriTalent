@@ -76,6 +76,11 @@ try {
     }
   }
 
+  // Public profile link previews (share.php) need the Supabase URL + publishable key — both already public in the JS bundle
+  if (process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY) {
+    writeFileSync('dist/share-config.json', JSON.stringify({ url: process.env.VITE_SUPABASE_URL, key: process.env.VITE_SUPABASE_ANON_KEY }))
+  }
+
   let n = 0
   client.trackProgress(info => { if (info.type === 'upload' && info.bytes === 0) n++ })
   await client.uploadFromDir('dist')

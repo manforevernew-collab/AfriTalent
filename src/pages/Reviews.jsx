@@ -26,6 +26,7 @@ export default function Reviews() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState('')
   const [form, setForm] = useState({ company_id: '', rating: 5, title: '', body: '' })
 
   useEffect(() => {
@@ -71,6 +72,7 @@ export default function Reviews() {
     e.preventDefault()
     if (!form.company_id || !form.title.trim() || !form.body.trim()) return
     setSubmitting(true)
+    setFormError('')
     try {
       const { error } = await supabase.from('reviews').insert({
         company_id: form.company_id,
@@ -85,7 +87,10 @@ export default function Reviews() {
       setShowForm(false)
       setForm({ company_id: '', rating: 5, title: '', body: '' })
       loadReviews()
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      const m = e?.message || 'Could not post your review.'
+      setFormError(/row-level security/i.test(m) ? 'Your account must be active to post reviews.' : m.replace(/^.*?ERROR:\s*/, ''))
+    }
     finally { setSubmitting(false) }
   }
 
@@ -154,6 +159,8 @@ export default function Reviews() {
           <div style={{ background: 'white', borderRadius: 16, padding: 32, width: '100%', maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 20 }}>Write a Review</h2>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {formError && <div className="notice notice-error"><i className="fas fa-exclamation-circle"></i> {formError}</div>}
+              <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>To prevent abuse, each person can leave at most 3 reviews for the same business.</p>
               <div>
                 <label style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 6 }}>Company</label>
                 <select className="input" value={form.company_id} onChange={e => setForm({ ...form, company_id: e.target.value })} required>
