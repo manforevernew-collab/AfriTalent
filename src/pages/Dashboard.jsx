@@ -65,8 +65,7 @@ export default function Dashboard() {
           actions={isBusiness
             ? <Link to="/gigs/new" className="btn btn-primary"><i className="fas fa-plus"></i> Post a gig</Link>
             : <Link to="/jobs?tab=gigs" className="btn btn-primary"><i className="fas fa-search"></i> Find gigs</Link>} />
-        <AccountBanner />
-        <VerificationBanner purpose={isBusiness ? 'withdraw funds and hire' : 'send proposals and get paid'} />
+        <VerificationBanner purpose={isBusiness ? 'withdraw funds and hire' : 'send proposals and get paid'} showAddress={false} />
 
         <nav className="dash-tabs" id="dash-tabs" aria-label="Account sections">
           {tabs.map(t => <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setParams({ tab: t.id }, { replace: true })}><i className={t.icon}></i> {t.label}</button>)}
