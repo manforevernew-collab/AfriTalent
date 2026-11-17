@@ -1,8 +1,9 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import AfriTalentLogo from './AfriTalentLogo'
-import { getNewestMessageThreads, getNewestNotifications } from '../lib/inboxData'
+import { useInbox, timeAgo, NOTIFICATION_ICON } from '../context/InboxContext'
+import UserAvatar from './UserAvatar'
 
 export default function Navbar() {
   const { user, profile, isAdmin, isBusiness, isJobSeeker, kycVerified, addressVerified, signOut } = useAuth()
@@ -12,12 +13,9 @@ export default function Navbar() {
   const [openDropdown, setOpenDropdown] = useState(null)
 
   const allVerified = kycVerified && addressVerified
-  const conversations = useMemo(() => getNewestMessageThreads(), [])
-  const notifications = useMemo(() => getNewestNotifications(), [])
-  const unreadMessages = conversations.reduce((total, thread) => total + (thread.unread || 0), 0)
-  const unreadNotifications = notifications.filter(item => item.unread).length
-  const messagePreviews = conversations.slice(0, 5)
-  const notificationPreviews = notifications.slice(0, 6)
+  const { bellNotifications, threads, unreadNotifications, unreadMessages, markNotificationRead, markAllNotificationsRead } = useInbox()
+  const messagePreviews = threads.slice(0, 5)
+  const notificationPreviews = bellNotifications.slice(0, 6)
 
   const navLinks = [
     { path: '/professionals', label: 'Professionals' },
@@ -48,14 +46,12 @@ export default function Navbar() {
   }
 
   function getAvatarContent() {
-    if (profile?.avatar_url) {
-      return <img src={profile.avatar_url} alt="Avatar" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
-    }
-    return (
-      <div className="avatar" style={{ width: 36, height: 36, fontSize: 13 }}>
-        {user?.user_metadata?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
-      </div>
-    )
+    return <UserAvatar src={profile?.avatar_url} name={profile?.full_name || user?.user_metadata?.full_name} email={user?.email} size={36} />
+  }
+
+  function openNotification(item) {
+    if (!item.read_at) markNotificationRead(item.id)
+    handleNavigate(item.link || '/notifications')
   }
 
   function NotificationBell() {
@@ -99,7 +95,7 @@ export default function Navbar() {
               alignItems: 'center',
               justifyContent: 'center',
               padding: '0 4px'
-            }}>{unreadNotifications}</span>
+            }}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>
           )}
         </button>
 
@@ -107,19 +103,26 @@ export default function Navbar() {
           <div style={{ position: 'absolute', top: 46, right: -10, width: 340, background: '#fff', border: '1px solid var(--color-border)', borderRadius: 16, boxShadow: '0 16px 40px rgba(15, 23, 42, 0.12)', zIndex: 60 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid var(--color-border)' }}>
               <strong style={{ fontSize: 14 }}>Notifications</strong>
-              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{notificationPreviews.length} new</span>
+              {unreadNotifications > 0
+                ? <button type="button" onClick={markAllNotificationsRead} style={{ border: 'none', background: 'none', fontSize: 11, color: 'var(--color-primary-dark)', fontWeight: 600, cursor: 'pointer' }}>Mark all read</button>
+                : <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>All caught up</span>}
             </div>
             <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              {notificationPreviews.length === 0 && (
+                <div style={{ padding: '28px 16px', textAlign: 'center', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  <i className="far fa-bell" style={{ fontSize: 22, display: 'block', marginBottom: 8 }}></i>No notifications yet
+                </div>
+              )}
               {notificationPreviews.map(item => (
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => handleNavigate('/notifications')}
+                  onClick={() => openNotification(item)}
                   style={{
                     width: '100%',
                     border: 'none',
                     borderBottom: '1px solid var(--color-border)',
-                    background: item.unread ? '#fff7ed' : '#fff',
+                    background: !item.read_at ? '#fff7ed' : '#fff',
                     textAlign: 'left',
                     padding: '12px 14px',
                     cursor: 'pointer',
@@ -127,11 +130,11 @@ export default function Navbar() {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                    <strong style={{ fontSize: 13 }}>{item.title}</strong>
-                    {item.unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block', marginTop: 4 }} />}
+                    <strong style={{ fontSize: 13 }}><i className={NOTIFICATION_ICON[item.kind] || NOTIFICATION_ICON.info} style={{ color: 'var(--color-primary-dark)', marginRight: 6, width: 14 }}></i>{item.title}</strong>
+                    {!item.read_at && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block', marginTop: 4 }} />}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.4 }}>{item.text}</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>{item.time}</div>
+                  {item.body && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.4 }}>{item.body}</div>}
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>{timeAgo(item.created_at)}</div>
                 </button>
               ))}
             </div>
@@ -197,7 +200,7 @@ export default function Navbar() {
               alignItems: 'center',
               justifyContent: 'center',
               padding: '0 4px'
-            }}>{unreadMessages}</span>
+            }}>{unreadMessages > 9 ? '9+' : unreadMessages}</span>
           )}
         </button>
 
@@ -205,23 +208,27 @@ export default function Navbar() {
           <div style={{ position: 'absolute', top: 46, right: -10, width: 340, background: '#fff', border: '1px solid var(--color-border)', borderRadius: 16, boxShadow: '0 16px 40px rgba(15, 23, 42, 0.12)', zIndex: 60 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid var(--color-border)' }}>
               <strong style={{ fontSize: 14 }}>Messages</strong>
-              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{messagePreviews.length} preview{messagePreviews.length > 1 ? 's' : ''}</span>
+              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{unreadMessages > 0 ? `${unreadMessages} unread` : 'All read'}</span>
             </div>
             <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              {messagePreviews.length === 0 && (
+                <div style={{ padding: '28px 16px', textAlign: 'center', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  <i className="far fa-comments" style={{ fontSize: 22, display: 'block', marginBottom: 8 }}></i>No conversations yet
+                </div>
+              )}
               {messagePreviews.map(thread => {
-                const lastMessage = thread.messages[thread.messages.length - 1]
-                const previewText = lastMessage ? lastMessage.text : 'No messages yet'
+                const previewText = thread.preview
 
                 return (
                   <button
-                    key={thread.id}
+                    key={thread.key}
                     type="button"
-                    onClick={() => handleNavigate(`/messages?thread=${thread.id}`)}
+                    onClick={() => handleNavigate(`/messages?thread=${thread.key}`)}
                     style={{
                       width: '100%',
                       border: 'none',
                       borderBottom: '1px solid var(--color-border)',
-                      background: '#fff',
+                      background: thread.unread ? '#fff7ed' : '#fff',
                       textAlign: 'left',
                       padding: '12px 14px',
                       cursor: 'pointer',
@@ -229,16 +236,18 @@ export default function Navbar() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div className="avatar" style={{ width: 36, height: 36, fontSize: 11, background: '#fff1d6', color: '#b45309' }}>{thread.avatar}</div>
+                      {thread.isTeam
+                        ? <span className="avatar" style={{ width: 36, height: 36, minWidth: 36, fontSize: 14, background: '#fff1d6', color: '#b45309' }}><i className="fas fa-headset"></i></span>
+                        : <UserAvatar src={thread.avatarUrl} name={thread.avatarName} size={36} />}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                          <strong style={{ fontSize: 13 }}>{thread.contact}</strong>
+                          <strong style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{thread.title}</strong>
                           {thread.unread > 0 && (
-                            <span style={{ minWidth: 18, height: 18, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f59e0b', color: 'white', fontSize: 10, fontWeight: 700 }}>{thread.unread}</span>
+                            <span style={{ minWidth: 18, height: 18, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f59e0b', color: 'white', fontSize: 10, fontWeight: 700 }}>•</span>
                           )}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{previewText}</div>
-                        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{lastMessage?.time || 'Now'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{thread.subtitle ? `${thread.subtitle} · ` : ''}{timeAgo(thread.lastAt)}</div>
                       </div>
                     </div>
                   </button>

@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import KycForm from '../components/KycForm'
 import { checkFile, uploadPrivate } from '../lib/kyc'
+import { needsAction } from '../lib/verification'
+import VerificationStatusCard from '../components/VerificationStatusCard'
+import { squareAvatar } from '../lib/avatar'
 
 const STEPS = [
   { id: 1, title: 'Profile Photo', icon: '📸', desc: 'Upload a display picture' },
@@ -15,8 +18,9 @@ const STEPS = [
 
 export default function SetupWizard() {
   const navigate = useNavigate()
-  const { user, profile, refreshProfile } = useAuth()
+  const { user, profile, refreshProfile, kycStatus, addressStatus } = useAuth()
   const [step, setStep] = useState(1)
+  const [startedAt, setStartedAt] = useState(false)
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
 
@@ -37,6 +41,23 @@ export default function SetupWizard() {
     if (profile?.avatar_url) setAvatarPreview(profile.avatar_url)
     if (profile?.user_type) setUserType(profile.user_type)
   }, [profile])
+
+  // Resume where the user left off — never re-ask for documents already submitted
+  useEffect(() => {
+    if (!profile || startedAt) return
+    setStartedAt(true)
+    if (!profile.avatar_url) setStep(1)
+    else if (needsAction(kycStatus)) setStep(3)
+    else if (needsAction(addressStatus)) setStep(4)
+    else setStep(5)
+  }, [profile, kycStatus, addressStatus, startedAt])
+
+  // Reaching the last step completes setup (so the app stops sending the user back here)
+  useEffect(() => {
+    if (step === 5 && user && profile && !profile.setup_complete) {
+      supabase.from('profiles').update({ setup_complete: true }).eq('id', user.id).then(() => refreshProfile())
+    }
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function getGPS() {
     if (!navigator.geolocation) {
@@ -59,6 +80,7 @@ export default function SetupWizard() {
   }
 
   async function handleAvatarUpload() {
+    if (!avatarFile && profile?.avatar_url) return true
     if (!avatarFile) {
       setToast({ type: 'error', message: 'Please select a profile photo.' })
       setTimeout(() => setToast(null), 3000)
@@ -66,12 +88,12 @@ export default function SetupWizard() {
     }
     setLoading(true)
     try {
-      const fileExt = avatarFile.name.split('.').pop()
-      const filePath = `avatars/${user.id}.${fileExt}`
-      const { error: upError } = await supabase.storage.from('avatars').upload(filePath, avatarFile, { upsert: true })
+      const image = await squareAvatar(avatarFile)
+      const filePath = `avatars/${user.id}.jpg`
+      const { error: upError } = await supabase.storage.from('avatars').upload(filePath, image, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' })
       if (upError) throw upError
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath)
-      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+      await supabase.from('profiles').update({ avatar_url: `${publicUrl}?v=${Date.now()}` }).eq('id', user.id)
       refreshProfile()
       setLoading(false)
       return true
@@ -92,7 +114,7 @@ export default function SetupWizard() {
       await supabase.from('profiles').update({ user_type: userType }).eq('id', user.id)
       refreshProfile()
     }
-    if (step === 4) {
+    if (step === 4 && needsAction(addressStatus)) {
       if (!address.trim()) { setToast({ type: 'error', message: 'Enter your address.' }); setTimeout(() => setToast(null), 3000); return }
       if (!gpsLat || !gpsLng) { setToast({ type: 'error', message: 'Capture GPS location.' }); setTimeout(() => setToast(null), 3000); return }
       const fileErr = checkFile(utilityFile)
@@ -106,6 +128,7 @@ export default function SetupWizard() {
           utility_bill_url: billPath, status: 'pending'
         })
         if (insErr) throw insErr
+        refreshProfile()
         setLoading(false)
       } catch (e) {
         setToast({ type: 'error', message: e.message })
@@ -115,9 +138,7 @@ export default function SetupWizard() {
       }
     }
     if (step === 5) {
-      await supabase.from('profiles').update({ setup_complete: true }).eq('id', user.id)
-      refreshProfile()
-      navigate('/')
+      navigate('/dashboard')
       return
     }
     setStep(step + 1)
@@ -175,9 +196,12 @@ export default function SetupWizard() {
           </div>
         )
       case 3:
-        return <KycForm userType={userType} onDone={() => setStep(4)} />
+        return needsAction(kycStatus)
+          ? <KycForm userType={userType} onDone={() => { refreshProfile(); setStep(needsAction(addressStatus) ? 4 : 5) }} />
+          : <VerificationStatusCard kind="identity" status={kycStatus} />
 
       case 4:
+        if (!needsAction(addressStatus)) return <VerificationStatusCard kind="address" status={addressStatus} />
         return (
           <div>
             <p style={{ color: 'var(--color-text-secondary)', fontSize: 14, marginBottom: 20 }}>Verify your physical address with GPS and a utility bill.</p>
@@ -205,7 +229,9 @@ export default function SetupWizard() {
             <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
             <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>You are all set!</h2>
             <p style={{ color: 'var(--color-text-secondary)', fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Your profile is under review. While you wait, explore AfriTalent.
+              {kycStatus === 'approved' && addressStatus === 'approved'
+                ? 'Your account is fully verified. Explore AfriTalent!'
+                : "Your verification is under review — we'll notify you when it's done. While you wait, explore AfriTalent."}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 320, margin: '0 auto' }}>
               {userType === 'job_seeker' && (
@@ -214,7 +240,7 @@ export default function SetupWizard() {
               {userType === 'business' && (
                 <button className="btn btn-success" onClick={() => navigate('/post-job')} style={{ padding: '12px' }}>➕ Post Your First Job</button>
               )}
-              <button className="btn btn-outline" onClick={() => navigate('/')} style={{ padding: '12px' }}>🏠 Go to Home</button>
+              <button className="btn btn-outline" onClick={() => navigate('/dashboard')} style={{ padding: '12px' }}>📊 Go to Dashboard</button>
             </div>
           </div>
         )
@@ -275,7 +301,7 @@ export default function SetupWizard() {
                 ← Back
               </button>
             )}
-            {step !== 3 && <button className="btn btn-primary" onClick={handleNext} disabled={loading} style={{ flex: 1, padding: '12px' }}>
+            {(step !== 3 || !needsAction(kycStatus)) && <button className="btn btn-primary" onClick={handleNext} disabled={loading} style={{ flex: 1, padding: '12px' }}>
               {loading ? (
                 <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <div className="spinner" style={{ width: 16, height: 16, borderColor: 'white', borderTopColor: 'transparent' }} />

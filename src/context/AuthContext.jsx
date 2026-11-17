@@ -2,6 +2,9 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, isProviderEnabled } from '../lib/supabase'
 import { rememberNext, takeRememberedNext, PROVIDER_NAMES } from '../lib/authHelpers'
+import { effectiveStatus } from '../lib/verification'
+
+const EMPTY_VERIFICATION = { kyc: 'unverified', address: 'unverified', kycNote: null }
 
 const TYPE_KEY = 'afri.signupType'
 const USER_TYPES = ['job_seeker', 'business']
@@ -19,6 +22,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [verification, setVerification] = useState(EMPTY_VERIFICATION)
 
   useEffect(() => {
     if (!supabase) {
@@ -36,31 +40,42 @@ export function AuthProvider({ children }) {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
-      if (session?.user) fetchProfile(session.user.id)
+      if (session?.user) fetchProfile(session.user.id, { allowRedirect: true })
       else setLoading(false)
     }).catch(() => setLoading(false))
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null)
-      if (session?.user) fetchProfile(session.user.id)
-      else { setProfile(null); setLoading(false) }
+      // Only a fresh sign-in may redirect (to /setup or ?next) — not token refreshes mid-browse
+      if (session?.user) fetchProfile(session.user.id, { allowRedirect: event === 'SIGNED_IN' })
+      else { setProfile(null); setVerification(EMPTY_VERIFICATION); setLoading(false) }
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  async function fetchProfile(userId) {
+  async function fetchProfile(userId, { allowRedirect = false } = {}) {
     if (!supabase) {
       setLoading(false)
       return
     }
 
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
+      const latest = table => supabase.from(table).select('id, status, submitted_at' + (table === 'kyc_verifications' ? ', reviewer_note' : ''))
+        .eq('user_id', userId).order('id', { ascending: false }).limit(1).maybeSingle()
+      const [{ data, error }, kycRes, addrRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        latest('kyc_verifications'),
+        latest('address_verifications'),
+      ])
+
+      if (!error) {
+        setVerification({
+          kyc: effectiveStatus(data?.kyc_status, kycRes.data),
+          address: effectiveStatus(data?.address_status, addrRes.data),
+          kycNote: kycRes.data?.reviewer_note || null,
+        })
+      }
 
       if (error) {
         setProfile(null)
@@ -79,9 +94,12 @@ export function AuthProvider({ children }) {
       setLoading(false)
 
       // Don't hijack the password-reset page (recovery links sign the user in)
-      if (window.location.pathname === '/reset-password') return
+      if (!allowRedirect || window.location.pathname === '/reset-password') return
       const next = takeRememberedNext()
-      if (data && !data.setup_complete && data.kyc_status === 'unverified') {
+      // Send brand-new members to setup — but never someone who has already submitted KYC
+      const kycNow = effectiveStatus(data?.kyc_status, kycRes.data)
+      const onSetupFlow = ['/setup', '/kyc', '/verify-address'].includes(window.location.pathname)
+      if (data && !data.setup_complete && kycNow === 'unverified' && !onSetupFlow) {
         navigate('/setup')
       } else if (next) {
         navigate(next, { replace: true })
@@ -169,6 +187,9 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, profile, loading,
       isAdmin, isBusiness, isJobSeeker, kycVerified, addressVerified, setupComplete,
+      // Effective statuses: 'unverified' | 'pending' | 'approved' | 'rejected'
+      kycStatus: verification.kyc, addressStatus: verification.address, kycNote: verification.kycNote,
+      fullyVerified: verification.kyc === 'approved' && verification.address === 'approved',
       signInWithEmail, signUpWithEmail, signInWithOAuth, signOut,
       resendConfirmation, sendPasswordReset, updatePassword,
       refreshProfile: () => user && fetchProfile(user.id)

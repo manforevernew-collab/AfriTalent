@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { verifyTopup } from '../lib/marketplace'
+import VerificationBanner from '../components/VerificationBanner'
 import { EarningsTab, WalletTab, PromoteTab, SupportTab, ContractsList, MyGigs, MyProposals } from '../components/dashboard/Tabs'
 
 const SEEKER_TABS = [
@@ -31,7 +32,7 @@ export function AccountBanner() {
 }
 
 export default function Dashboard() {
-  const { profile, isBusiness, kycVerified } = useAuth()
+  const { profile, isBusiness } = useAuth()
   const [params, setParams] = useSearchParams()
   const tabs = isBusiness ? BUSINESS_TABS : SEEKER_TABS
   const tab = tabs.some(t => t.id === params.get('tab')) ? params.get('tab') : tabs[0].id
@@ -61,7 +62,7 @@ export default function Dashboard() {
           </div>
         </div>
         <AccountBanner />
-        {!kycVerified && profile?.account_status !== 'blocked' && <div className="notice notice-warn"><i className="fas fa-id-card"></i> Verify your identity to {isBusiness ? 'withdraw funds' : 'send proposals and get paid'}. <Link to="/kyc" style={{ fontWeight: 700, marginLeft: 4 }}>Verify now</Link></div>}
+        <VerificationBanner purpose={isBusiness ? 'withdraw funds and hire' : 'send proposals and get paid'} />
 
         <nav className="dash-tabs" aria-label="Dashboard sections">
           {tabs.map(t => <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setParams({ tab: t.id }, { replace: true })}><i className={t.icon}></i> {t.label}</button>)}

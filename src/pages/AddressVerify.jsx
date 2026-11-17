@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { checkFile, uploadPrivate } from '../lib/kyc'
+import VerificationStatusCard from '../components/VerificationStatusCard'
 
 export default function AddressVerify() {
   const navigate = useNavigate()
-  const { user, profile, refreshProfile } = useAuth()
+  const { user, profile, refreshProfile, addressStatus } = useAuth()
+  const [editing, setEditing] = useState(false)
   const [address, setAddress] = useState('')
   const [gpsLat, setGpsLat] = useState('')
   const [gpsLng, setGpsLng] = useState('')
@@ -18,7 +20,7 @@ export default function AddressVerify() {
   useEffect(() => { loadExisting() }, [])
 
   async function loadExisting() {
-    const { data } = await supabase.from('address_verifications').select('*').eq('user_id', user.id).maybeSingle()
+    const { data } = await supabase.from('address_verifications').select('*').eq('user_id', user.id).order('id', { ascending: false }).limit(1).maybeSingle()
     if (data) {
       setExisting(data)
       setAddress(data.address_text || '')
@@ -66,18 +68,21 @@ export default function AddressVerify() {
 
       refreshProfile()
       setToast({ type: 'success', message: 'Address verification submitted!' })
-      setTimeout(() => { setToast(null); navigate('/') }, 2000)
+      setTimeout(() => { setToast(null); setEditing(false); navigate('/dashboard') }, 2000)
     } catch (e) { setToast({ type: 'error', message: e.message }); setTimeout(() => setToast(null), 3000) }
     finally { setLoading(false) }
   }
 
-  if (profile?.address_status === 'approved') {
+  // Already submitted or verified → show the status instead of asking again
+  if ((addressStatus === 'approved' || addressStatus === 'pending') && !editing) {
     return (
-      <div className="container" style={{ maxWidth: 560, padding: '80px 24px', textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-        <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Address Verified</h1>
-        <p style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>Your address has been verified.</p>
-        <button className="btn btn-primary" onClick={() => navigate('/')} style={{ marginTop: 20 }}>Go Home</button>
+      <div className="page-enter">
+        <div className="container" style={{ maxWidth: 560, paddingTop: 40, paddingBottom: 60 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 20 }}>Address Verification</h1>
+          <VerificationStatusCard kind="address" status={addressStatus} submittedAt={existing?.submitted_at} onUpdate={() => setEditing(true)}>
+            <button className="btn btn-primary" onClick={() => navigate('/dashboard')}>Go to dashboard</button>
+          </VerificationStatusCard>
+        </div>
       </div>
     )
   }
