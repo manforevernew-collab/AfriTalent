@@ -3,17 +3,22 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { verifyTopup } from '../lib/marketplace'
 import VerificationBanner from '../components/VerificationBanner'
+import { OverviewTab, OrdersTab } from '../components/dashboard/Overview'
 import { EarningsTab, WalletTab, PromoteTab, SupportTab, ContractsList, MyGigs, MyProposals } from '../components/dashboard/Tabs'
 
 const SEEKER_TABS = [
+  { id: 'overview', label: 'Overview', icon: 'fas fa-chart-pie' },
   { id: 'earnings', label: 'Earnings', icon: 'fas fa-coins' },
   { id: 'gigs', label: 'My gigs', icon: 'fas fa-briefcase' },
   { id: 'wallet', label: 'Wallet', icon: 'fas fa-wallet' },
+  { id: 'orders', label: 'Orders', icon: 'fas fa-shopping-bag' },
   { id: 'support', label: 'Support', icon: 'far fa-life-ring' },
 ]
 const BUSINESS_TABS = [
+  { id: 'overview', label: 'Overview', icon: 'fas fa-chart-pie' },
   { id: 'wallet', label: 'Wallet', icon: 'fas fa-wallet' },
   { id: 'gigs', label: 'Gigs & hires', icon: 'fas fa-briefcase' },
+  { id: 'orders', label: 'Orders', icon: 'fas fa-shopping-bag' },
   { id: 'promote', label: 'Ads & boosts', icon: 'fas fa-bullhorn' },
   { id: 'support', label: 'Support', icon: 'far fa-life-ring' },
 ]
@@ -55,10 +60,11 @@ export default function Dashboard() {
         <div className="dash-head">
           <div>
             <h1>Hi {profile?.full_name?.split(' ')[0] || 'there'} 👋</h1>
-            <p className="muted">{isBusiness ? 'Manage your wallet, hires, ads and boosts.' : 'Track your gigs, earnings and payouts.'}</p>
+            <p className="muted">Your activity at a glance — earnings, wallet, applications, orders and ratings.</p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {isBusiness ? <Link to="/gigs/new" className="btn btn-primary"><i className="fas fa-plus"></i> Post a gig</Link> : <Link to="/gigs" className="btn btn-primary"><i className="fas fa-search"></i> Find gigs</Link>}
+            {profile?.username && <Link to={`/u/${profile.username}`} className="btn btn-outline"><i className="far fa-id-badge"></i> My public profile</Link>}
+            {isBusiness ? <Link to="/gigs/new" className="btn btn-primary"><i className="fas fa-plus"></i> Post a gig</Link> : <Link to="/jobs?tab=gigs" className="btn btn-primary"><i className="fas fa-search"></i> Find gigs</Link>}
           </div>
         </div>
         <AccountBanner />
@@ -68,6 +74,8 @@ export default function Dashboard() {
           {tabs.map(t => <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setParams({ tab: t.id }, { replace: true })}><i className={t.icon}></i> {t.label}</button>)}
         </nav>
 
+        {tab === 'overview' && <OverviewTab />}
+        {tab === 'orders' && <OrdersTab />}
         {tab === 'earnings' && <EarningsTab />}
         {tab === 'wallet' && <WalletTab notice={topupNotice} />}
         {tab === 'gigs' && (

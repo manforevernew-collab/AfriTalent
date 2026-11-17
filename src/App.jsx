@@ -11,7 +11,6 @@ import AddBusiness from './pages/AddBusiness'
 import Reviews from './pages/Reviews'
 import Professionals from './pages/Professionals'
 import ProfessionalDetail from './pages/ProfessionalDetail'
-import Jobs from './pages/Jobs'
 import JobDetail from './pages/JobDetail'
 import PostJob from './pages/PostJob'
 import UploadResume from './pages/UploadResume'
@@ -23,12 +22,17 @@ import Login from './pages/Login'
 import SignUp from './pages/SignUp'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import JobsHub from './pages/JobsHub'
+import Feed from './pages/Feed'
+import Market from './pages/Market'
+import PostDetail from './pages/PostDetail'
+import PublicProfile from './pages/PublicProfile'
+import OrderDetail from './pages/OrderDetail'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import Messages from './pages/Messages'
 import NotFound from './pages/NotFound'
 import Dashboard, { AccountBanner } from './pages/Dashboard'
-import Gigs from './pages/Gigs'
 import GigNew from './pages/GigNew'
 import GigDetail from './pages/GigDetail'
 import Contract from './pages/Contract'
@@ -62,7 +66,7 @@ function App() {
           <Route path="/reviews" element={<Reviews />} />
           <Route path="/professionals" element={<Professionals />} />
           <Route path="/professionals/:id" element={<ProfessionalDetail />} />
-          <Route path="/jobs" element={<Jobs />} />
+          <Route path="/jobs" element={<JobsHub />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<SignUp />} />
@@ -80,7 +84,12 @@ function App() {
           <Route path="/verify-address" element={<ProtectedRoute><AddressVerify /></ProtectedRoute>} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/gigs" element={<Gigs />} />
+          <Route path="/gigs" element={<Navigate to="/jobs?tab=gigs" replace />} />
+          <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
+          <Route path="/market" element={<Market />} />
+          <Route path="/posts/:id" element={<PostDetail />} />
+          <Route path="/u/:handle" element={<PublicProfile />} />
+          <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
           <Route path="/gigs/new" element={<ProtectedRoute><GigNew /></ProtectedRoute>} />
           <Route path="/gigs/:id" element={<GigDetail />} />
           <Route path="/contracts/:id" element={<ProtectedRoute><Contract /></ProtectedRoute>} />

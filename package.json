@@ -13,7 +13,7 @@
     "sync:businesses": "node scripts/sync-businesses.mjs",
     "sync:businesses:dry": "node scripts/sync-businesses.mjs --dry-run",
     "test": "node --test server/normalize.test.js server/sources.test.js server/kyc/runCheck.test.js server/business/osm.test.js shared/idRules.test.js",
-    "test:sql": "node tests/escrow.sql.test.mjs",
+    "test:sql": "node tests/escrow.sql.test.mjs && node tests/social.sql.test.mjs",
     "deploy:ftp": "node scripts/deploy-ftp.mjs"
   },
   "dependencies": {

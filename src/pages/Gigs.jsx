@@ -63,7 +63,7 @@ export default function Gigs() {
   }, [q, category])
 
   const featuredIds = useMemo(() => new Set(featured.map(f => f.id)), [featured])
-  const set = patch => setParams(Object.fromEntries(Object.entries({ q, category, ...patch }).filter(([, v]) => v)), { replace: true })
+  const set = patch => setParams(Object.fromEntries(Object.entries({ tab: 'gigs', q, category, ...patch }).filter(([, v]) => v)), { replace: true })
 
   return (
     <div className="page-enter">

@@ -8,6 +8,7 @@ import './index.css'
 import './styles/jobs.css'
 import './styles/directory.css'
 import './styles/marketplace.css'
+import './styles/social.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -17,22 +17,29 @@ export default function Navbar() {
   const messagePreviews = threads.slice(0, 5)
   const notificationPreviews = bellNotifications.slice(0, 6)
 
-  const navLinks = [
-    { path: '/professionals', label: 'Professionals' },
-    { path: '/businesses', label: 'Businesses' },
-    { path: '/jobs', label: 'Jobs' },
-    { path: '/gigs', label: 'Gigs' },
-    { path: '/reviews', label: 'Reviews' },
-  ]
-
-  if (user) {
-    navLinks.push({ path: '/dashboard', label: 'Dashboard' })
-    navLinks.push({ path: '/messages', label: 'Messages' })
-  }
+  // Signed in: a personal app (dashboard, feed, jobs incl. gigs, market, inbox).
+  // Signed out: the public directories.
+  const navLinks = user
+    ? [
+        { path: '/dashboard', label: 'Dashboard' },
+        { path: '/feed', label: 'Feed' },
+        { path: '/jobs', label: 'Jobs', also: ['/gigs'] },
+        { path: '/market', label: 'Market' },
+        { path: '/messages', label: 'Messages' },
+      ]
+    : [
+        { path: '/professionals', label: 'Professionals' },
+        { path: '/businesses', label: 'Businesses' },
+        { path: '/jobs', label: 'Jobs', also: ['/gigs'] },
+        { path: '/market', label: 'Market' },
+        { path: '/reviews', label: 'Reviews' },
+      ]
 
   if (isJobSeeker && allVerified) {
     navLinks.push({ path: '/matches', label: 'My Matches' })
   }
+
+  const isActive = link => location.pathname === link.path || location.pathname.startsWith(link.path + '/') || (link.also || []).some(p => location.pathname.startsWith(p))
 
   async function handleSignOut() {
     await signOut()
@@ -59,7 +66,12 @@ export default function Navbar() {
       <div style={{ position: 'relative' }}>
         <button
           type="button"
-          onClick={() => setOpenDropdown(prev => prev === 'notifications' ? null : 'notifications')}
+          onClick={() => setOpenDropdown(prev => {
+            const opening = prev !== 'notifications'
+            // opening the bell = seen: clear the unread badge shortly after the list is shown
+            if (opening && unreadNotifications > 0) setTimeout(markAllNotificationsRead, 2500)
+            return opening ? 'notifications' : null
+          })}
           aria-label="Notifications"
           style={{
             position: 'relative',
@@ -277,7 +289,7 @@ export default function Navbar() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} className="desktop-nav">
           {navLinks.map(link => (
             <Link key={link.path} to={link.path} className="btn btn-ghost"
-              style={{ background: location.pathname === link.path ? 'var(--color-bg-muted)' : 'transparent', fontWeight: location.pathname === link.path ? 600 : 500 }}>
+              style={{ background: isActive(link) ? 'var(--color-bg-muted)' : 'transparent', fontWeight: isActive(link) ? 600 : 500 }}>
               {link.label}
             </Link>
           ))}
