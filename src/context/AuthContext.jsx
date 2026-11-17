@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase, getEnabledProviders } from '../lib/supabase'
+import { supabase, isProviderEnabled } from '../lib/supabase'
 import { rememberNext, takeRememberedNext, PROVIDER_NAMES } from '../lib/authHelpers'
 
 const TYPE_KEY = 'afri.signupType'
@@ -112,10 +112,9 @@ export function AuthProvider({ children }) {
   const signInWithOAuth = async (provider, { next, userType } = {}) => {
     if (!supabase) return { data: null, error: new Error('Supabase is not configured.') }
     // Never send people to Supabase's raw "provider is not enabled" error page
-    const enabled = await getEnabledProviders()
-    if (enabled && !enabled[provider]) {
+    if (await isProviderEnabled(provider) === false) {
       const name = PROVIDER_NAMES[provider] || provider
-      return { data: null, error: new Error(`${name} sign-in isn't available yet. Please use your email and password.`) }
+      return { data: null, error: Object.assign(new Error(`${name} sign-in is being set up and isn't available yet. Please use your email and password for now.`), { code: 'provider' }) }
     }
     rememberNext(next)
     setPendingUserType(userType)

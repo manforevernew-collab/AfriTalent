@@ -1,7 +1,6 @@
 // Building blocks shared by Login, SignUp, ForgotPassword and ResetPassword.
 // Visual design matches the original AfriTalent login card.
-import { useEffect, useState } from 'react'
-import { getEnabledProviders } from '../../lib/supabase'
+import { useState } from 'react'
 
 export function AuthShell({ title, subtitle, children }) {
   return (
@@ -40,22 +39,29 @@ const LinkedInIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="#0A66C2" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
 )
 
-// Social sign-in buttons — only the providers switched on in Supabase are shown.
+const IndeedIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="none" stroke="#2557A7" strokeWidth="2.6" strokeLinecap="round" d="M4.5 9.5C8 4.2 14.5 2.2 20 4"/>
+    <circle fill="#2557A7" cx="12.5" cy="10.5" r="3.1"/>
+    <rect fill="#2557A7" x="10.3" y="14.6" width="4.4" height="8" rx="2.2"/>
+  </svg>
+)
+
+// Social sign-in / sign-up. The first sign-in with any provider creates the account
+// (name, email and photo are imported by the database trigger).
+export const SOCIAL_PROVIDERS = [
+  { id: 'google', name: 'Google', icon: <GoogleIcon /> },
+  { id: 'linkedin_oidc', name: 'LinkedIn', icon: <LinkedInIcon /> },
+  { id: 'custom:indeed', name: 'Indeed', icon: <IndeedIcon /> },
+]
+
 export function SocialButtons({ onSelect, disabled, verb = 'Continue' }) {
-  const [providers, setProviders] = useState(null) // null = still checking / unknown
-  useEffect(() => { let live = true; getEnabledProviders().then(p => live && setProviders(p)); return () => { live = false } }, [])
-  if (!providers) return null
-  const list = [
-    providers.google && { id: 'google', label: `${verb} with Google`, icon: <GoogleIcon /> },
-    providers.linkedin_oidc && { id: 'linkedin_oidc', label: `${verb} with LinkedIn`, icon: <LinkedInIcon /> },
-  ].filter(Boolean)
-  if (!list.length) return null
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
-        {list.map(p => (
+        {SOCIAL_PROVIDERS.map(p => (
           <button key={p.id} type="button" className="btn btn-outline" onClick={() => onSelect(p.id)} disabled={disabled} style={{ justifyContent: 'center' }}>
-            {p.icon} {p.label}
+            {p.icon} {verb} with {p.name}
           </button>
         ))}
       </div>

@@ -14,7 +14,7 @@ export function takeRememberedNext() {
   try { const v = sessionStorage.getItem(NEXT_KEY); sessionStorage.removeItem(NEXT_KEY); return v ? safeNext(v) : null } catch { return null }
 }
 
-export const PROVIDER_NAMES = { google: 'Google', linkedin_oidc: 'LinkedIn' }
+export const PROVIDER_NAMES = { google: 'Google', linkedin_oidc: 'LinkedIn', 'custom:indeed': 'Indeed' }
 
 // Supabase error → message a person can act on. `code` lets pages offer follow-up actions.
 export function friendlyAuthError(error) {

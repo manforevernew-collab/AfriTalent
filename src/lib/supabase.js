@@ -32,3 +32,21 @@ export function getEnabledProviders() {
     .catch(() => null)
   return providersPromise
 }
+
+// Is this sign-in provider switched on? Built-in providers are listed in /auth/v1/settings;
+// custom ones ("custom:indeed") are probed — Supabase answers 400 when a provider is off and
+// redirects (opaque with redirect:'manual') when it's on. Resolves true/false, or null if unknown.
+export async function isProviderEnabled(provider) {
+  if (!hasSupabaseConfig) return null
+  if (!provider.startsWith('custom:')) {
+    const list = await getEnabledProviders()
+    return list ? Boolean(list[provider]) : null
+  }
+  try {
+    const res = await fetch(`${supabaseUrl}/auth/v1/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${encodeURIComponent(window.location.origin)}`,
+      { redirect: 'manual', headers: { apikey: supabaseAnonKey } })
+    if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) return true
+    if (res.status === 400 || res.status === 404) return false
+    return null
+  } catch { return null }
+}
